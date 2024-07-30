@@ -13,7 +13,7 @@ const server = http.createServer(app);
 const io = socketIo(server);
 const PORT = 8080;
 
-app.options("*", cors(corsOptions));
+app.use(bodyParser.json());
 
 const corsOptions = {
   origin: "https://wdjhs.netlify.app",
@@ -23,7 +23,7 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
-app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 const mongoURI =
   "mongodb+srv://wdj:0E5bLilnUvGPx8C2@wdj.u3xoaf9.mongodb.net/?retryWrites=true&w=majority&appName=wdj";
