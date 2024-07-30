@@ -13,7 +13,7 @@ const { body, validationResult } = require("express-validator");
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
-const port = process.env.PORT || 8080;
+const PORT = 8080;
 
 app.use(bodyParser.json());
 
