@@ -1,8 +1,6 @@
-require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
-const moment = require("moment");
 const bodyParser = require("body-parser");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -25,9 +23,11 @@ app.use(
   })
 );
 
-// MongoDB 연결
+const mongoURI =
+  "mongodb+srv://wdj:0E5bLilnUvGPx8C2@wdj.u3xoaf9.mongodb.net/?retryWrites=true&w=majority&appName=wdj";
+
 mongoose
-  .connect(process.env.MONGODB_URI)
+  .connect(mongoURI, {})
   .then(() => console.log("MongoDB 연결 성공"))
   .catch((err) => console.error("MongoDB 연결 실패:", err));
 
@@ -44,14 +44,17 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", UserSchema);
 
-// JWT 검증 미들웨어
+// JWT_SECRET을 직접 지정
+const JWT_SECRET = "eOwfeyPmLn9uUnqY";
+
+// JWT 검증 미들웨어 수정
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
   if (token == null) return res.sendStatus(401);
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.sendStatus(403);
     req.user = user;
     next();
@@ -126,7 +129,7 @@ app.post(
           .json({ message: "비밀번호가 일치하지 않습니다." });
       }
 
-      const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      const token = jwt.sign({ id: user._id }, JWT_SECRET, {
         expiresIn: "1h",
       });
 
