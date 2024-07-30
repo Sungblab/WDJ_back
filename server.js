@@ -13,15 +13,17 @@ const server = http.createServer(app);
 const io = socketIo(server);
 const PORT = 8080;
 
-app.use(bodyParser.json());
+app.options("*", cors(corsOptions));
 
-// CORS 설정
-app.use(
-  cors({
-    origin: "https://wdjhs.netlify.app",
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin: "https://wdjhs.netlify.app",
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
 
 const mongoURI =
   "mongodb+srv://wdj:0E5bLilnUvGPx8C2@wdj.u3xoaf9.mongodb.net/?retryWrites=true&w=majority&appName=wdj";
