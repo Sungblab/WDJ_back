@@ -1,6 +1,5 @@
 const express = require("express");
 const http = require("http");
-const socketIo = require("socket.io");
 const bodyParser = require("body-parser");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -10,20 +9,17 @@ const { body, validationResult } = require("express-validator");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
-const PORT = 8080;
+const PORT = 3000;
 
 app.use(bodyParser.json());
 
-const corsOptions = {
-  origin: "https://wdjhs.netlify.app",
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
-
-app.options("*", cors(corsOptions));
+// CORS 설정
+app.use(
+  cors({
+    origin: "https://wdjhs.netlify.app", // 프론트엔드 주소
+    credentials: true,
+  })
+);
 
 const mongoURI =
   "mongodb+srv://wdj:0E5bLilnUvGPx8C2@wdj.u3xoaf9.mongodb.net/?retryWrites=true&w=majority&appName=wdj";
@@ -542,14 +538,6 @@ app.use((err, req, res, next) => {
     .status(500)
     .json({ message: "서버 내부 오류가 발생했습니다.", error: err.message });
 });
-
-// CORS 설정 (필요한 경우)
-app.use(
-  cors({
-    origin: "http://127.0.0.1:5500", // 클라이언트의 origin으로 변경
-    credentials: true,
-  })
-);
 
 // 청원 모델 정의
 const PetitionSchema = new mongoose.Schema({
