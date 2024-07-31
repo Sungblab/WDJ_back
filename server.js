@@ -46,29 +46,42 @@ const User = mongoose.model("User", UserSchema);
 const JWT_SECRET = "eOwfeyPmLn9uUnqY";
 
 // JWT 검증 미들웨어 수정
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
   if (token == null) return res.sendStatus(401);
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
-    req.user = user;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    console.log("Decoded token:", decoded);
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      console.log("User not found for id:", decoded.id);
+      return res.sendStatus(403);
+    }
+
+    req.user = {
+      id: user._id.toString(), // ObjectId를 문자열로 변환
+      username: user.username,
+      isAdmin: user.isAdmin,
+    };
+
+    console.log("Authenticated user:", req.user);
     next();
-  });
+  } catch (error) {
+    console.error("Authentication error:", error);
+    return res.sendStatus(403);
+  }
 };
 
 // 관리자 확인 미들웨어
-const isAdmin = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user || !user.isAdmin) {
-      return res.status(403).json({ message: "관리자 권한이 필요합니다." });
-    }
+const isAdmin = (req, res, next) => {
+  if (req.user && req.user.isAdmin) {
     next();
-  } catch (error) {
-    res.status(500).json({ message: "서버 오류" });
+  } else {
+    res.status(403).json({ message: "관리자 권한이 필요합니다." });
   }
 };
 
@@ -866,7 +879,6 @@ app.get("/api/posts", authenticateToken, async (req, res) => {
   }
 });
 
-// 게시글 상세 조회 API
 app.get("/api/posts/:id", authenticateToken, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id)
@@ -884,18 +896,29 @@ app.get("/api/posts/:id", authenticateToken, async (req, res) => {
     post.views += 1;
     await post.save();
 
-    // 익명 게시물 처리
+    // 익명 게시물 처리 및 isAuthor 확인
     const responsePost = post.toObject();
+
+    // 여기서 req.user.id와 post.author._id를 문자열로 변환하여 비교합니다.
+    responsePost.isAuthor = req.user.id === post.author._id.toString();
+
+    console.log("Server isAuthor check:", {
+      userId: req.user.id,
+      authorId: post.author._id.toString(),
+      isAuthor: responsePost.isAuthor,
+    });
+
     if (post.isAnonymous) {
       responsePost.author = { username: "익명", nickname: "익명" };
     }
 
-    // 댓글 익명 처리
+    // 댓글 처리
     responsePost.comments = responsePost.comments.map((comment) => {
+      const isCommentAuthor = req.user.id === comment.author._id.toString();
       if (comment.isAnonymous) {
         comment.author = { username: "익명", nickname: "익명" };
       }
-      return comment;
+      return { ...comment, isAuthor: isCommentAuthor };
     });
 
     res.json(responsePost);
@@ -905,17 +928,22 @@ app.get("/api/posts/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// 댓글 목록 조회 API 추가
+// 댓글 목록 조회 API
 app.get("/api/posts/:id/comments", authenticateToken, async (req, res) => {
   try {
     const comments = await Comment.find({ post: req.params.id })
       .populate("author", "username nickname")
       .sort({ createdAt: -1 });
 
-    res.json(comments);
+    const responseComments = comments.map((comment) => {
+      const c = comment.toObject();
+      c.author._id = c.author._id.toString(); // ID를 문자열로 변환
+      return c;
+    });
+
+    res.json(responseComments);
   } catch (error) {
-    console.error("댓글 목록 조회 중 오류 발생:", error);
-    res.status(500).json({ message: "서버 오류", error: error.message });
+    // ...
   }
 });
 
@@ -949,17 +977,12 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
 app.delete("/api/posts/:id", authenticateToken, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-
     if (!post) {
       return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
     }
 
-    // 관리자이거나 작성자 본인인 경우에만 삭제 가능
-    if (
-      req.user.isAdmin ||
-      post.author.toString() === req.user.id ||
-      post.isAnonymous
-    ) {
+    // 문자열로 변환하여 비교
+    if (post.author.toString() === req.user.id || req.user.isAdmin) {
       await Post.findByIdAndDelete(req.params.id);
       await Comment.deleteMany({ post: req.params.id });
       return res.json({ message: "게시글이 삭제되었습니다." });
@@ -1004,22 +1027,20 @@ app.post("/api/posts/:id/comments", authenticateToken, async (req, res) => {
 app.delete("/api/comments/:id", authenticateToken, async (req, res) => {
   try {
     const comment = await Comment.findById(req.params.id);
-
     if (!comment) {
       return res.status(404).json({ message: "댓글을 찾을 수 없습니다." });
     }
 
-    // 댓글 작성자 또는 관리자만 삭제 가능
-    if (comment.author.toString() !== req.user.id && !req.user.isAdmin) {
+    // 문자열로 변환하여 비교
+    if (comment.author.toString() === req.user.id || req.user.isAdmin) {
+      await Comment.findByIdAndDelete(req.params.id);
+      await Post.findByIdAndUpdate(comment.post, {
+        $pull: { comments: comment._id },
+      });
+      return res.json({ message: "댓글이 삭제되었습니다." });
+    } else {
       return res.status(403).json({ message: "댓글 삭제 권한이 없습니다." });
     }
-
-    await Comment.findByIdAndDelete(req.params.id);
-    await Post.findByIdAndUpdate(comment.post, {
-      $pull: { comments: comment._id },
-    });
-
-    res.json({ message: "댓글이 삭제되었습니다." });
   } catch (error) {
     console.error("댓글 삭제 중 오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
@@ -1108,6 +1129,36 @@ app.post(
       res.json({ message: "사용자가 승인되었습니다.", user });
     } catch (error) {
       console.error("사용자 승인 중 오류 발생:", error);
+      res.status(500).json({ message: "서버 오류", error: error.message });
+    }
+  }
+);
+
+// 관리자용: 익명 게시글 작성자 확인 API
+app.get(
+  "/api/admin/posts/:id/reveal-author",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const post = await Post.findById(req.params.id).populate(
+        "author",
+        "username nickname"
+      );
+
+      if (!post) {
+        return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
+      }
+
+      const authorInfo = {
+        id: post.author._id,
+        username: post.author.username,
+        nickname: post.author.nickname,
+      };
+
+      res.json(authorInfo);
+    } catch (error) {
+      console.error("작성자 정보 확인 중 오류 발생:", error);
       res.status(500).json({ message: "서버 오류", error: error.message });
     }
   }
