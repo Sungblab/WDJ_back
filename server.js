@@ -16,7 +16,7 @@ app.use(bodyParser.json());
 // CORS 설정
 app.use(
   cors({
-    origin: "https://wdjhs.netlify.app", // 프론트엔드 주소
+    origin: "https://wdj.kr", // 프론트엔드 주소
     credentials: true,
   })
 );
