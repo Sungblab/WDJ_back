@@ -23,7 +23,6 @@ app.use(
   })
 );
 
-// MongoDB 연결
 const mongoURI = process.env.MONGODB_URI;
 
 mongoose
@@ -45,7 +44,7 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model("User", UserSchema);
 
 // JWT_SECRET을 직접 지정
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = "eOwfeyPmLn9uUnqY";
 
 // JWT 검증 미들웨어 수정
 const authenticateToken = async (req, res, next) => {
@@ -199,14 +198,11 @@ app.post(
           .json({ message: "이미 존재하는 학번/아이디 또는 이메일입니다." });
       }
 
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
       user = new User({
         username,
         realName,
         nickname,
-        password: hashedPassword,
+        password: await bcrypt.hash(password, 10),
         email,
         isApproved: false,
       });
@@ -492,10 +488,8 @@ app.post(
         return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
       }
 
-      // 새 비밀번호 암호화
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(newPassword, salt);
-
+      // 비밀번호 해싱
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
       user.password = hashedPassword;
       await user.save();
 
@@ -515,6 +509,7 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
 
     console.log("비밀번호 변경 요청 받음:", userId);
 
+    // 사용자 조회
     const user = await User.findById(userId);
     if (!user) {
       console.log("사용자를 찾을 수 없음:", userId);
@@ -534,9 +529,8 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
 
     console.log("현재 비밀번호 확인 완료");
 
-    // 새 비밀번호 암호화
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
+    // 새 비밀번호 해싱
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     // 비밀번호 업데이트
     user.password = hashedPassword;
@@ -549,14 +543,6 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
     console.error("비밀번호 변경 중 오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
-});
-
-// 전역 에러 핸들러 추가
-app.use((err, req, res, next) => {
-  console.error("서버 오류:", err);
-  res
-    .status(500)
-    .json({ message: "서버 내부 오류가 발생했습니다.", error: err.message });
 });
 
 // 청원 모델 정의
@@ -784,20 +770,16 @@ const AnonymousUserSchema = new mongoose.Schema({
 
 const AnonymousUser = mongoose.model("AnonymousUser", AnonymousUserSchema);
 
-// 로그인 API 수정
+// 로그인 API
 app.post("/api/login", async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = await User.findOne({ username });
 
-    if (!user) {
-      return res.status(400).json({ message: "사용자를 찾을 수 없습니다." });
-    }
-
-    // 비밀번호 검증
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "비밀번호가 일치하지 않습니다." });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res
+        .status(400)
+        .json({ message: "사용자명 또는 비밀번호가 일치하지 않습니다." });
     }
 
     if (!user.isApproved) {
@@ -806,12 +788,16 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "관리자의 승인을 기다리고 있습니다." });
     }
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, {
+    if (user.isBlocked) {
+      return res
+        .status(403)
+        .json({ message: "계정이 차단되었습니다. 관리자에게 문의하세요." });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "1h",
     });
-
     res.json({
-      message: "로그인 성공",
       token,
       user: {
         id: user._id,
