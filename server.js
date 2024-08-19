@@ -341,18 +341,6 @@ app.patch(
   }
 );
 
-// 전역 에러 핸들러
-app.use((err, req, res, next) => {
-  console.error("Server error:", err);
-  res
-    .status(500)
-    .json({ message: "서버 내부 오류가 발생했습니다.", error: err.message });
-});
-
-app.listen(PORT, () => {
-  console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
-});
-
 // Notice 모델 수정
 const NoticeSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -551,12 +539,15 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
   }
 });
 
-// 전역 에러 핸들러 추가
+// 2. 에러 처리 개선
 app.use((err, req, res, next) => {
-  console.error("서버 오류:", err);
-  res
-    .status(500)
-    .json({ message: "서버 내부 오류가 발생했습니다.", error: err.message });
+  console.error("Error:", err.message);
+  if (err.name === "JsonWebTokenError") {
+    return res
+      .status(401)
+      .json({ message: "인증 오류가 발생했습니다. 다시 로그인해주세요." });
+  }
+  res.status(500).json({ message: "서버 오류가 발생했습니다." });
 });
 
 // 청원 모델 정의
@@ -1170,3 +1161,7 @@ app.get(
     }
   }
 );
+
+app.listen(PORT, () => {
+  console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
+});
