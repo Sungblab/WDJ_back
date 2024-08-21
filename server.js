@@ -1157,11 +1157,12 @@ app.get(
   }
 );
 
-const { Anthropic } = require('@anthropic-ai/sdk');
+import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({
-  apiKey: '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'
+  apiKey: process.env.ANTHROPIC_API_KEY // 환경 변수에서 API 키를 가져옵니다.
 });
+
 const GrammarCheckLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   sentence: { type: String, required: true },
