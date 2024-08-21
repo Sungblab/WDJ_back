@@ -64,7 +64,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     req.user = {
-      id: user._id.toString(),
+      id: user._id.toString(), // ObjectId를 문자열로 변환
       username: user.username,
       isAdmin: user.isAdmin,
     };
@@ -76,7 +76,6 @@ const authenticateToken = async (req, res, next) => {
     return res.sendStatus(403);
   }
 };
-
 
 // 관리자 확인 미들웨어
 const isAdmin = (req, res, next) => {
@@ -1157,123 +1156,3 @@ app.get(
     }
   }
 );
-
-const Anthropic = require('@anthropic-ai/sdk').default;
-
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY // 환경 변수에서 API 키를 가져옵니다.
-});
-
-const GrammarCheckLogSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  sentence: { type: String, required: true },
-  correctedSentence: String,
-  isCorrect: Boolean,
-  attempts: [{ 
-    attempt: String, 
-    hint: String, 
-    timestamp: { type: Date, default: Date.now }
-  }],
-  createdAt: { type: Date, default: Date.now }
-});
-
-const GrammarCheckLog = mongoose.model('GrammarCheckLog', GrammarCheckLogSchema);
-
-app.post('/api/grammar-check', authenticateToken, async (req, res) => {
-  try {
-    const { sentence, correctedSentence, attemptCount } = req.body;
-    const userId = req.user.id;
-
-    let log = await GrammarCheckLog.findOne({ userId, sentence });
-    if (!log) {
-      log = new GrammarCheckLog({ userId, sentence });
-    }
-
-    const prompt = `당신은 한국어 문법 전문가입니다. 다음 문장을 문법적으로 검사해주세요: 
-    
-    "${sentence}"
-
-    검사 지침:
-    1. 문장의 전반적인 문법 구조를 분석하세요.
-    2. 맞춤법, 띄어쓰기, 문장 성분의 호응, 어순 등을 세밀하게 검토하세요.
-    3. 문법적 오류가 있다면 다음과 같이 응답해주세요:
-       a) 오류의 위치와 종류를 명확히 지적하세요.
-       b) 오류를 수정하기 위한 힌트를 제공하세요. 단, 직접적인 정답은 주지 마세요.
-       c) 가능하다면 문법 규칙에 대한 간단한 설명을 덧붙이세요.
-    4. 문장이 문법적으로 완벽하다면 "이 문장은 문법적으로 완벽합니다."라고 답변하세요.
-    5. 답변은 한국어로 해주세요.
-
-    응답 형식:
-    [문법 검사 결과]
-    [오류 지적 및 힌트]
-    [추가 설명 (필요시)]
-
-    주의: 문장의 의미나 내용에 대해서는 언급하지 마세요. 오직 문법적 측면만 다루어 주세요.`;
-
-    const response = await anthropic.completions.create({
-      model: "claude-3-sonnet-20240229",  // Claude 3.5 Sonnet 모델 사용
-      prompt: prompt,
-      max_tokens_to_sample: 500,
-    });
-
-    const aiResponse = response.completion.trim();
-    const isCorrect = aiResponse.includes('문법적으로 완벽합니다');
-
-    if (correctedSentence) {
-      log.attempts.push({ attempt: correctedSentence, hint: aiResponse });
-    }
-
-    if (isCorrect || attemptCount >= 3) {
-      log.isCorrect = isCorrect;
-      log.correctedSentence = isCorrect ? sentence : correctedSentence;
-    }
-
-    await log.save();
-
-    res.json({
-      isCorrect,
-      hint: isCorrect ? '이 문장은 문법적으로 완벽합니다.' : aiResponse,
-      correctSentence: attemptCount >= 3 ? correctedSentence : undefined
-    });
-  } catch (error) {
-    console.error('문법 검사 중 오류 발생:', error);
-    res.status(500).json({ message: '서버 오류', error: error.message });
-  }
-});
-
-app.get('/api/admin/grammar-check-logs', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (page - 1) * limit;
-
-    const logs = await GrammarCheckLog.find()
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit))
-      .populate('userId', 'username nickname');
-
-    const total = await GrammarCheckLog.countDocuments();
-
-    res.json({
-      logs,
-      currentPage: Number(page),
-      totalPages: Math.ceil(total / limit),
-      totalLogs: total
-    });
-  } catch (error) {
-    console.error('문법 검사 로그 조회 중 오류 발생:', error);
-    res.status(500).json({ message: '서버 오류', error: error.message });
-  }
-});
-
-app.get('/api/check-auth', authenticateToken, (req, res) => {
-  res.json({ 
-    isAuthenticated: true, 
-    user: { 
-      id: req.user.id, 
-      username: req.user.username, 
-      isAdmin: req.user.isAdmin 
-    } 
-  });
-});
