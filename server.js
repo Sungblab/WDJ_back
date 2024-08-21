@@ -1210,7 +1210,7 @@ app.post('/api/grammar-check', authenticateToken, async (req, res) => {
     주의: 문장의 의미나 내용에 대해서는 언급하지 마세요. 오직 문법적 측면만 다루어 주세요.`;
 
     const response = await anthropic.completions.create({
-      model: "claude-2",
+      model: "claude-3-sonnet-20240229",  // Claude 3.5 Sonnet 모델 사용
       prompt: prompt,
       max_tokens_to_sample: 500,
     });
