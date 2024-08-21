@@ -1157,9 +1157,11 @@ app.get(
   }
 );
 
-const { AnthropicAPI } = require('@anthropic-ai/sdk');
-const anthropic = new AnthropicAPI({ apiKey: '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' });
+const { Anthropic } = require('@anthropic-ai/sdk');
 
+const anthropic = new Anthropic({
+  apiKey: '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'
+});
 const GrammarCheckLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   sentence: { type: String, required: true },
