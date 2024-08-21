@@ -64,7 +64,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     req.user = {
-      id: user._id.toString(), // ObjectId를 문자열로 변환
+      id: user._id.toString(),
       username: user.username,
       isAdmin: user.isAdmin,
     };
@@ -76,6 +76,7 @@ const authenticateToken = async (req, res, next) => {
     return res.sendStatus(403);
   }
 };
+
 
 // 관리자 확인 미들웨어
 const isAdmin = (req, res, next) => {
