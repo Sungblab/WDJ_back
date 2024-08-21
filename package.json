@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.26.1",
     "@my-school.info/neis-api": "^1.0.0",
     "axios": "^1.7.2",
     "bcrypt": "^5.1.1",
