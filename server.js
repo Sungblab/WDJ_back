@@ -10,6 +10,8 @@ const dotenv = require("dotenv");
 const cookieParser = require("cookie-parser");
 const axios = require("axios");
 const crypto = require("crypto");
+const multer = require("multer");
+const path = require("path");
 dotenv.config();
 
 const app = express();
@@ -131,7 +133,7 @@ const checkBoardAccess = (req, res, next) => {
   }
 
   console.log("Access denied");
-  res.status(403).json({ message: "접근 권한�� 필요합니다." });
+  res.status(403).json({ message: "접근 권한이 필요합니다." });
 };
 
 // JWT 토큰 생성 함수 수정
@@ -389,7 +391,7 @@ app.listen(PORT, () => {
   console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
 });
 
-// Notice 모델 정의
+// Notice 모델 ��의
 const NoticeSchema = new mongoose.Schema({
   title: { type: String, required: true },
   content: { type: String, required: true },
@@ -810,7 +812,7 @@ function renderUsers(users) {
     // createdAt이 존재하는지 확인하고 포맷팅
     const formattedDate = user.createdAt
       ? formatDate(user.createdAt)
-      : "날짜 없음";
+      : "날�� 없음";
 
     tr.innerHTML = `
       <td class="p-3">
@@ -1055,7 +1057,7 @@ app.get("/api/posts", async (req, res) => {
       query.board = board;
     }
 
-    // 정렬 ���션
+    // 정렬 션
     let sortOption = {};
     switch (sort) {
       case "oldest":
@@ -1228,13 +1230,13 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "수정 권한이 없습니다." });
     }
 
-    // 권한 체크 통과 후 수정
+    // 권한 체크 통과 후 수���
     post.title = title;
     post.content = content;
     post.updatedAt = new Date();
     await post.save();
 
-    res.json({ message: "게시글이 수정되었습니��." });
+    res.json({ message: "게시글이 수정되었습니다." });
   } catch (error) {
     console.error("게시글 수정 중 오류:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
@@ -1276,7 +1278,7 @@ app.delete("/api/posts/:id", async (req, res) => {
     // 익명 게시글인 경우 비밀번호 확인
     if (!isAuthorized && post.isAnonymous) {
       if (!password) {
-        return res.status(400).json({ message: "비밀번호를 입력해주���요." });
+        return res.status(400).json({ message: "비밀번호를 입력해주세요." });
       }
       const isPasswordValid = await bcrypt.compare(
         password,
@@ -1520,3 +1522,46 @@ app.post(
 app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
   res.json({ valid: true });
 });
+
+// multer 설정 추가
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/"); // uploads 폴더에 저장
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB 제한
+  },
+  fileFilter: (req, file, cb) => {
+    // 이미지 파일만 허용
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("이미지 파일만 업로드 가능합니다."));
+    }
+  },
+});
+
+// 이미지 업로드 API 추가
+app.post("/api/upload", upload.single("image"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "파일이 없습니다." });
+    }
+    // 파일 URL 반환
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
+  } catch (error) {
+    res.status(500).json({ message: "파일 업로드 실패" });
+  }
+});
+
+// 정적 파일 제공
+app.use("/uploads", express.static("uploads"));
