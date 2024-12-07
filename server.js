@@ -12,6 +12,7 @@ const axios = require("axios");
 const crypto = require("crypto");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 dotenv.config();
 
 const app = express();
@@ -19,8 +20,8 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // CORS 설정
 app.use(
@@ -29,6 +30,8 @@ app.use(
       ? process.env.CORS_ORIGIN.split(",")
       : ["https://wdj.kr"],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
@@ -39,7 +42,7 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-// MongoDB 연���
+// MongoDB 연결
 const mongoURI = process.env.MONGODB_URI;
 if (!mongoURI) {
   console.error("Error: MONGODB_URI is not set in environment variables.");
@@ -50,6 +53,12 @@ mongoose
   .connect(mongoURI)
   .then(() => console.log("MongoDB 연결 성공 - " + mongoURI))
   .catch((err) => console.error("MongoDB 연결 실패:", err));
+
+// uploads 디렉토리 존재 확인 및 생성
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // 사용자 모델 정의
 const UserSchema = new mongoose.Schema({
@@ -391,7 +400,7 @@ app.listen(PORT, () => {
   console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
 });
 
-// Notice 모델 ��의
+// Notice 모델 정의
 const NoticeSchema = new mongoose.Schema({
   title: { type: String, required: true },
   content: { type: String, required: true },
@@ -473,7 +482,7 @@ app.get("/api/notices", async (req, res) => {
       currentPage: page,
     });
   } catch (error) {
-    console.error("공지사항 목록 조회 중 오류 발생:", error);
+    console.error("공지사항 목록 조회 중 오오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
@@ -621,7 +630,7 @@ app.post("/api/petitions", authenticateToken, async (req, res) => {
   }
 });
 
-// 청원 목록 조회 API
+// 청원원 목록 조회 API
 app.get("/api/petitions", authenticateToken, async (req, res) => {
   try {
     const { status } = req.query;
@@ -708,7 +717,7 @@ app.patch(
       );
 
       if (!petition) {
-        return res.status(404).json({ message: "청원을 찾을 수 없습니다." });
+        return res.status(404).json({ message: "청원을 찾찾을 수 없습니다." });
       }
 
       res.json({ message: "청원 상태가 업데이트되었습니다.", petition });
@@ -812,7 +821,7 @@ function renderUsers(users) {
     // createdAt이 존재하는지 확인하고 포맷팅
     const formattedDate = user.createdAt
       ? formatDate(user.createdAt)
-      : "날�� 없음";
+      : "날짜 없음";
 
     tr.innerHTML = `
       <td class="p-3">
@@ -1230,7 +1239,7 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "수정 권한이 없습니다." });
     }
 
-    // 권한 체크 통과 후 수���
+    // 권한 체크 통과 후 수정
     post.title = title;
     post.content = content;
     post.updatedAt = new Date();
@@ -1429,7 +1438,7 @@ app.get(
       });
     } catch (error) {
       console.error("통계 조회 중 오류:", error);
-      res.status(500).json({ message: "서버 오류" });
+      res.status(500).json({ message: "서버 오오류" });
     }
   }
 );
@@ -1523,10 +1532,10 @@ app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
   res.json({ valid: true });
 });
 
-// multer 설정 추가
+// multer 설정 수정
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "uploads/"); // uploads 폴더에 저장
+    cb(null, uploadsDir); // 절대 경로 사용
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -1538,6 +1547,7 @@ const upload = multer({
   storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB 제한
+    files: 1, // 단일 파일만 허용
   },
   fileFilter: (req, file, cb) => {
     // 이미지 파일만 허용
@@ -1549,18 +1559,34 @@ const upload = multer({
   },
 });
 
-// 이미지 업로드 API 추가
-app.post("/api/upload", upload.single("image"), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: "파일이 없습니다." });
+// 이미지 업로드 API 수정
+app.post("/api/upload", (req, res) => {
+  upload.single("image")(req, res, function (err) {
+    if (err instanceof multer.MulterError) {
+      // multer 관련 에러
+      console.error("Multer error:", err);
+      return res.status(400).json({
+        message: err.message || "파일 업로드 중 오류가 발생했습니다.",
+      });
+    } else if (err) {
+      // 기타 에러
+      console.error("Upload error:", err);
+      return res.status(500).json({
+        message: "서버 오류가 발생했습니다.",
+      });
     }
-    // 파일 URL 반환
-    const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl });
-  } catch (error) {
-    res.status(500).json({ message: "파일 업로드 실패" });
-  }
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "파일이 없습니다." });
+      }
+      const fileUrl = `/uploads/${req.file.filename}`;
+      res.json({ url: fileUrl });
+    } catch (error) {
+      console.error("File processing error:", error);
+      res.status(500).json({ message: "파일 처리 중 오류가 발생했습니다." });
+    }
+  });
 });
 
 // 정적 파일 제공
