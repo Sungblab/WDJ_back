@@ -36,7 +36,7 @@ app.use(
   })
 );
 
-// JWT_SECRET 환경���수 확인 및 설정
+// JWT_SECRET 환경�����수 확인 및 설정
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.error("Error: JWT_SECRET is not set in environment variables.");
@@ -452,7 +452,7 @@ const NoticeSchema = new mongoose.Schema({
 
 const Notice = mongoose.model("Notice", NoticeSchema);
 
-// 공지사항 목록 조회 API
+// 공지사항 목록 조��� API
 app.get("/api/notices", async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -2030,7 +2030,7 @@ app.post(
           { $set: { isApproved: true } }
         );
         res.json({
-          message: `${userIds.length}명��� 사용자가 승인되었습니다.`,
+          message: `${userIds.length}명�� 사용자가 승인되었습니다.`,
         });
       } else {
         res.status(400).json({ message: "잘못된 작업입니다." });
