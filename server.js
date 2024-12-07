@@ -131,7 +131,7 @@ const checkBoardAccess = (req, res, next) => {
   }
 
   console.log("Access denied");
-  res.status(403).json({ message: "접근 권한이 필요합니다." });
+  res.status(403).json({ message: "접근 권한이 없습니다." });
 };
 
 // JWT 토큰 생성 함수 수정
@@ -346,7 +346,7 @@ app.delete(
         return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
       }
       await User.findByIdAndDelete(userId);
-      res.json({ message: "사용자가 성공적으로 삭제되었습��다." });
+      res.json({ message: "사용자가 성공적으로 삭제되었습니다." });
     } catch (error) {
       console.error("사용자 삭제 중 오류 발생:", error);
       res.status(500).json({ message: "서버 오류" });
@@ -557,13 +557,7 @@ app.post(
   async (req, res) => {
     try {
       const userId = req.params.userId;
-      const { newPassword } = req.body;
-
-      if (!newPassword) {
-        return res
-          .status(400)
-          .json({ message: "새 비밀번호가 제공되지 않았습니다." });
-      }
+      const defaultPassword = "1234"; // 임시 비밀번호
 
       const user = await User.findById(userId);
       if (!user) {
@@ -571,17 +565,17 @@ app.post(
       }
 
       // 비밀번호 해싱
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
       user.password = hashedPassword;
       await user.save();
 
-      res.json({ message: "비밀번호가 성공적으로 초기화되었습니다." });
-    } catch (error) {
-      console.error("비밀번호 초기화 중 오류 발생:", error);
-      res.status(500).json({
-        message: "서버 오류 비밀번호 초기화 중 오류 발생:",
-        error: error.message,
+      res.json({
+        message: "비밀번호가 초기화되었습니다.",
+        tempPassword: defaultPassword,
       });
+    } catch (error) {
+      console.error("비밀번호 초기화 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
     }
   }
 );
@@ -657,7 +651,7 @@ app.post("/api/petitions", authenticateToken, async (req, res) => {
       title,
       content,
       author,
-      expiresAt: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000), // 20일 ��� 만료
+      expiresAt: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000), // 20일 토큰 만료
     });
 
     await petition.save();
@@ -826,7 +820,7 @@ function maskIP(ip) {
   return `${parts[0]}.${parts[1]}`; // 앞의 부분만 표시
 }
 
-// ��짜 포맷팅 함수 수정
+// 날짜 포맷팅 함수 수정
 function formatDate(dateString) {
   try {
     const date = new Date(dateString);
@@ -1059,7 +1053,7 @@ function processPost(post) {
   };
 }
 
-// 게시글 목록 조회 API
+// 게시글 목록 조조회 API
 app.get("/api/posts", async (req, res) => {
   try {
     const { page = 1, limit = 15, board = "all", sort = "latest" } = req.query;
@@ -1240,7 +1234,7 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
       !req.user ||
       post.author.toString() !== req.user._id.toString()
     ) {
-      return res.status(403).json({ message: "수정 권한이 없습니다." });
+      return res.status(403).json({ message: "수정 권권한이 없습니다." });
     }
 
     // 권한 체크 통과 후 수정
