@@ -28,7 +28,7 @@ app.use(
   cors({
     origin: process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(",")
-      : ["https://wdj.kr"],
+      : ["https://wdj.kr", "http://127.0.0.1:5500"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -822,7 +822,7 @@ function renderUsers(users) {
     // createdAt이 존재하는지 확인하고 포맷팅
     const formattedDate = user.createdAt
       ? formatDate(user.createdAt)
-      : "��짜 없음";
+      : "날짜 없음";
 
     tr.innerHTML = `
       <td class="p-3">
@@ -883,6 +883,8 @@ const PostSchema = new mongoose.Schema({
   upvoteCount: { type: Number, default: 0 },
   downvoteCount: { type: Number, default: 0 },
   score: { type: Number, default: 0 },
+  upvoteIPs: [{ type: String }],
+  downvoteIPs: [{ type: String }],
 });
 
 // 투표 처리 시 사용할 가상 필드 추가
@@ -915,7 +917,7 @@ const CommentSchema = new mongoose.Schema({
 
 const Comment = mongoose.model("Comment", CommentSchema);
 
-// 보안 헤헤더 ��정
+// 보안 헤헤더 정
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -963,7 +965,7 @@ app.get("/api/meals", async (req, res) => {
   }
 });
 
-// 학사일��� 조회 API
+// 학사일정 조회 API
 app.get("/api/schedule", async (req, res) => {
   try {
     const { year, month } = req.query;
@@ -988,9 +990,9 @@ app.get("/api/schedule", async (req, res) => {
       }
     );
 
-    // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
+    // NEIS API가 이터가 없을 때 RESULT 객체를 반환하는 경우 처리
     if (response.data.RESULT?.CODE === "INFO-200") {
-      // 데이터가 없는 경우 빈 배열 반환
+      // 데데이터가 없는 경우 빈 배열 반환
       return res.json([]);
     }
 
@@ -1147,7 +1149,7 @@ app.get("/api/posts/:id", async (req, res) => {
   try {
     const postId = req.params.id;
 
-    // ObjectId 유효성 검사
+    // ObjectId 유효효성 검사
     if (!mongoose.Types.ObjectId.isValid(postId)) {
       return res
         .status(400)
@@ -1312,7 +1314,7 @@ app.delete("/api/posts/:id", async (req, res) => {
     res.json({ message: "게시글이 삭제되었습니다." });
   } catch (error) {
     console.error("게시글 삭제 중 오류:", error);
-    res.status(500).json({ message: "서버 오��" });
+    res.status(500).json({ message: "서버 오류" });
   }
 });
 
@@ -1533,7 +1535,7 @@ app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
   res.json({ valid: true });
 });
 
-// multer ���정 수정
+// multer 정 수정
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, "uploads");
@@ -1583,8 +1585,7 @@ app.post("/api/upload", (req, res) => {
 
       // API_BASE_URL을 포함한 전체 URL 반환
       const fileUrl = `${
-        process.env.API_BASE_URL ||
-        "https://port-0-wdj-back-lz9cd9taff85e9dc.sel4.cloudtype.app"
+        process.env.API_BASE_URL || "http://127.0.0.1:3000"
       }/uploads/${req.file.filename}`;
 
       console.log("Upload successful:", {
@@ -1604,3 +1605,187 @@ app.post("/api/upload", (req, res) => {
 
 // uploads 디렉토리 정적 파일 제공 설정을 상단으로 이동
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// 댓글 작성 API
+app.post("/api/posts/:id/comments", async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { content, isAnonymous, anonymousNick, anonymousPassword } = req.body;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
+    }
+
+    const commentData = {
+      content,
+      post: postId,
+      isAnonymous,
+      createdAt: new Date(),
+    };
+
+    if (isAnonymous) {
+      if (!anonymousPassword) {
+        return res
+          .status(400)
+          .json({ message: "익명 댓글 작성 시 비밀번호는 필수입니다." });
+      }
+      commentData.anonymousNick = anonymousNick || "ㅇㅇ";
+      commentData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
+      commentData.ipAddress = req.ip;
+    } else {
+      // 로그인한 사용자의 경우
+      const token =
+        req.cookies.token || req.headers.authorization?.split(" ")[1];
+      if (!token) {
+        return res.status(401).json({ message: "인증이 필요합니다." });
+      }
+      const decoded = jwt.verify(token, JWT_SECRET);
+      commentData.author = decoded.id;
+    }
+
+    const comment = new Comment(commentData);
+    await comment.save();
+
+    // 게시글의 댓글 목록에 추가
+    post.comments.push(comment._id);
+    await post.save();
+
+    res.status(201).json({ message: "댓글이 작성되었습니다.", comment });
+  } catch (error) {
+    console.error("댓글 작성 중 오류:", error);
+    res.status(500).json({ message: "서버 오류" });
+  }
+});
+
+// 댓글 삭제 API
+app.delete("/api/comments/:id", async (req, res) => {
+  try {
+    const commentId = req.params.id;
+    const { password } = req.body;
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: "댓글을 찾을 수 없습니다." });
+    }
+
+    // 권한 확인
+    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+    let isAuthorized = false;
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await User.findById(decoded.id);
+        if (
+          user &&
+          (user.isAdmin ||
+            (comment.author &&
+              comment.author.toString() === user._id.toString()))
+        ) {
+          isAuthorized = true;
+        }
+      } catch (error) {
+        console.error("Token verification failed:", error);
+      }
+    }
+
+    // 익명 댓글인 경우 비밀번호 확인
+    if (!isAuthorized && comment.isAnonymous) {
+      if (!password) {
+        return res.status(400).json({ message: "비밀번호를 입력해주세요." });
+      }
+      const isPasswordValid = await bcrypt.compare(
+        password,
+        comment.anonymousPassword
+      );
+      if (!isPasswordValid) {
+        return res
+          .status(403)
+          .json({ message: "비밀번호가 일치하지 않습니다." });
+      }
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ message: "삭제 권한이 없습니다." });
+    }
+
+    // 댓글 삭제
+    await Comment.findByIdAndDelete(commentId);
+
+    // 게시글의 댓글 목록에서도 제거
+    const post = await Post.findById(comment.post);
+    if (post) {
+      post.comments = post.comments.filter((id) => id.toString() !== commentId);
+      await post.save();
+    }
+
+    res.json({ message: "댓글이 삭제되었습니다." });
+  } catch (error) {
+    console.error("댓글 삭제 중 오류:", error);
+    res.status(500).json({ message: "서버 오류" });
+  }
+});
+
+// 게시글 투표 API
+app.post("/api/posts/:id/vote", async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { type } = req.body; // 'up' 또는 'down'
+    const clientIP = req.ip;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
+    }
+
+    // IP 기반 투표 기록 초기화
+    if (!post.upvoteIPs) post.upvoteIPs = [];
+    if (!post.downvoteIPs) post.downvoteIPs = [];
+
+    // 이전 투표 확인 및 제거
+    const hasUpvoted = post.upvoteIPs.includes(clientIP);
+    const hasDownvoted = post.downvoteIPs.includes(clientIP);
+
+    // 이전 투표 취소
+    if (hasUpvoted) {
+      post.upvoteIPs = post.upvoteIPs.filter((ip) => ip !== clientIP);
+      post.upvoteCount = Math.max(0, (post.upvoteCount || 0) - 1);
+    }
+    if (hasDownvoted) {
+      post.downvoteIPs = post.downvoteIPs.filter((ip) => ip !== clientIP);
+      post.downvoteCount = Math.max(0, (post.downvoteCount || 0) - 1);
+    }
+
+    // 새로운 투표 적용
+    if (type === "up" && !hasUpvoted) {
+      post.upvoteIPs.push(clientIP);
+      post.upvoteCount = (post.upvoteCount || 0) + 1;
+    } else if (type === "down" && !hasDownvoted) {
+      post.downvoteIPs.push(clientIP);
+      post.downvoteCount = (post.downvoteCount || 0) + 1;
+    }
+
+    // 점수 계산
+    post.score = (post.upvoteCount || 0) - (post.downvoteCount || 0);
+
+    // 베스트글 조건 확인 (예: 추천 수가 5 이상이고 비추천보다 많은 경우)
+    const isBest = post.upvoteCount >= 5 && post.score > 0;
+
+    await post.save();
+
+    res.json({
+      message: "투표가 처리되었습니다.",
+      upvotes: post.upvoteCount || 0,
+      downvotes: post.downvoteCount || 0,
+      score: post.score,
+      isBest,
+      hasUpvoted: type === "up" && !hasUpvoted,
+      hasDownvoted: type === "down" && !hasDownvoted,
+    });
+  } catch (error) {
+    console.error("투표 처리 중 오류:", error);
+    res.status(500).json({ message: "서버 오류" });
+  }
+});
