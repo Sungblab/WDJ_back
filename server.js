@@ -1585,7 +1585,8 @@ app.post("/api/upload", (req, res) => {
 
       // API_BASE_URL을 포함한 전체 URL 반환
       const fileUrl = `${
-        process.env.API_BASE_URL || "http://127.0.0.1:3000"
+        process.env.API_BASE_URL ||
+        "https://port-0-wdj-back-lz9cd9taff85e9dc.sel4.cloudtype.app"
       }/uploads/${req.file.filename}`;
 
       console.log("Upload successful:", {
