@@ -25,7 +25,7 @@ app.use(
   cors({
     origin: process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(",")
-      : ["http://127.0.0.1:5500", "http://localhost:5500"],
+      : ["https://wdj.kr", "https://wdjhs.netlify.app"],
     credentials: true,
   })
 );
