@@ -131,7 +131,7 @@ const checkBoardAccess = (req, res, next) => {
   }
 
   console.log("Access denied");
-  res.status(403).json({ message: "접근 권한이 필요합니다." });
+  res.status(403).json({ message: "접근 권한이 ���요합니다." });
 };
 
 // JWT 토큰 생성 함수 수정
@@ -182,6 +182,48 @@ app.post("/api/login", async (req, res) => {
     res.json({
       message: "로그인 성공",
       token: token, // 토큰을 응답에 포함
+      user: {
+        id: user._id,
+        username: user.username,
+        nickname: user.nickname,
+        isAdmin: user.isAdmin,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "서버 오류", error: error.message });
+  }
+});
+
+// 관리자 로그인 API
+app.post("/api/auth/admin/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ username });
+
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({
+        message: "사용자명 또는 비밀번호가 일치하지 않습니다.",
+      });
+    }
+
+    if (!user.isAdmin) {
+      return res.status(403).json({
+        message: "관리자 권한이 없습니다.",
+      });
+    }
+
+    const token = generateToken(user);
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 3600000, // 1시간
+    });
+
+    res.json({
+      message: "관리자 로그인 성공",
+      token: token,
       user: {
         id: user._id,
         username: user.username,
@@ -1342,7 +1384,7 @@ app.get(
           success: true,
           author: post.author.realName || "알 수 없음",
           nickname: post.author.nickname || "알알 수 없음",
-          username: post.author.username || "알 수 없음",
+          username: post.author.username || "알 수 없음음",
         };
       } else {
         responseData = {
@@ -1623,7 +1665,7 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
     }
 
     if (!post.isAnonymous) {
-      return res.status(400).json({ message: "익명 게시글이 아닙니다." });
+      return res.status(400).json({ message: "익명 게시글�� 아닙니다." });
     }
 
     if (!password) {
