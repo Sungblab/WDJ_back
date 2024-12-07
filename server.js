@@ -36,7 +36,7 @@ app.use(
   })
 );
 
-// JWT_SECRET 환경변수 확인 및 설정
+// JWT_SECRET 환경���수 확인 및 설정
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.error("Error: JWT_SECRET is not set in environment variables.");
@@ -615,7 +615,7 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
         .json({ message: "현재 비밀번호가 일치하지 않습니다." });
     }
 
-    console.log("현재 비밀번호 확인 완료");
+    console.log("현재 비밀번호 확�� 완료");
 
     // 새 비밀번호 해싱
     const hashedPassword = await bcrypt.hash(newPassword, 10);
