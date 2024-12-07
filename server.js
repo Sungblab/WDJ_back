@@ -25,8 +25,14 @@ app.use(
   cors({
     origin: process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(",")
-      : ["https://wdj.kr", "https://wdjhs.netlify.app"],
+      : [
+          "http://localhost:3000",
+          "https://wdj.kr",
+          "https://wdjhs.netlify.app",
+        ],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
@@ -116,7 +122,7 @@ const isAdmin = (req, res, next) => {
   }
 };
 
-// 미들웨어: 게시판 접근 권한 확인
+// 미들웨어: 게시�� 접근 권한 확인
 const checkBoardAccess = (req, res, next) => {
   const { board } = req.params;
 
@@ -257,7 +263,7 @@ app.post(
       .notEmpty()
       .withMessage("비밀번호를 입력해주세요.")
       .isLength({ min: 6 })
-      .withMessage("비밀번호는 최소 6자 이상이어야 합니다."),
+      .withMessage("���밀번호는 최소 6자 이상이어야 합니다."),
     body("email")
       .notEmpty()
       .withMessage("이메일 주소를 입력해주세요.")
@@ -422,9 +428,12 @@ app.patch(
 // 전역 에러 핸들러
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
-  res
-    .status(500)
-    .json({ message: "서버 내부 오류가 발생했습니다.", error: err.message });
+
+  // JSON 형식으로 에러 응답
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "서버 내부 오류가 발생했습니다.",
+  });
 });
 
 app.listen(PORT, () => {
@@ -659,7 +668,7 @@ app.post("/api/petitions", authenticateToken, async (req, res) => {
       .status(201)
       .json({ message: "청원이 성공적으로 생성되었습니다.", petition });
   } catch (error) {
-    console.error("청원 생성 중 오류 발생:", error);
+    console.error("청원 생성 중 ��류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
@@ -1237,7 +1246,7 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
       return res.status(403).json({ message: "수정 권권한이 없습니다." });
     }
 
-    // 권한 체크 통과 후 수정
+    // 권한 체크 통과 후후 수정
     post.title = title;
     post.content = content;
     post.updatedAt = new Date();
@@ -2020,7 +2029,9 @@ app.post(
           { _id: { $in: userIds } },
           { $set: { isApproved: true } }
         );
-        res.json({ message: `${userIds.length}명의 사용자가 승인되었습니다.` });
+        res.json({
+          message: `${userIds.length}명��� 사용자가 승인되었습니다.`,
+        });
       } else {
         res.status(400).json({ message: "잘못된 작업입니다." });
       }
