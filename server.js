@@ -32,6 +32,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
   })
 );
 
@@ -538,7 +539,7 @@ app.post(
       user.password = hashedPassword;
       await user.save();
 
-      res.json({ message: "비밀번호가 초기화되었습니다." });
+      res.json({ message: "비밀번호호가 초기화되었습니다." });
     } catch (error) {
       console.error("비밀번호 초기화 중 오류 발생:", error);
       res.status(500).json({ message: "서버 오류" });
@@ -583,7 +584,7 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
 
     console.log("비밀번호가 변경되었습니다.");
 
-    res.json({ message: "비밀번호가 성공적으로 변경되었습니다." });
+    res.json({ message: "비밀번호가 성공적으로 변경��었습니다." });
   } catch (error) {
     console.error("비밀번호 변경 중 오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
@@ -625,7 +626,7 @@ app.post("/api/petitions", authenticateToken, async (req, res) => {
       .status(201)
       .json({ message: "청원이 성공적으로 생성되었습니다.", petition });
   } catch (error) {
-    console.error("청원 생성 중 오류 발생:", error);
+    console.error("청원 생성 중 오��� 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
@@ -762,7 +763,7 @@ app.delete(
 
       res.json({ message: "청원이 성공적으로 삭제되었습니다." });
     } catch (error) {
-      console.error("청원 삭제 중 오류:", error);
+      console.error("��원 삭제 중 오류:", error);
       res.status(500).json({ message: "서버 오류", error: error.message });
     }
   }
@@ -845,7 +846,7 @@ function renderUsers(users) {
         <span class="px-2 py-1 rounded-full text-xs ${
           user.isAdmin ? "bg-blue-500 text-white" : "bg-gray-500 text-white"
         }">
-          ${user.isAdmin ? "관리자" : "일반"}
+          ${user.isAdmin ? "관리리자" : "일반"}
         </span>
       </td>
       <td class="p-3">
@@ -1195,7 +1196,7 @@ app.get("/api/posts/:id", async (req, res) => {
 
     res.json(processedPost);
   } catch (error) {
-    console.error("게시글 조회 중 오류:", error);
+    console.error("게시글 조회회 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
   }
 });
@@ -1535,7 +1536,7 @@ app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
 // multer 설정 수정
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadsDir); // 절대 경로 사용
+    cb(null, path.join(__dirname, "uploads")); // 절대 경로 사용
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -1562,17 +1563,10 @@ const upload = multer({
 // 이미지 업로드 API 수정
 app.post("/api/upload", (req, res) => {
   upload.single("image")(req, res, function (err) {
-    if (err instanceof multer.MulterError) {
-      // multer 관련 에러
-      console.error("Multer error:", err);
+    if (err) {
+      console.error("Upload error:", err);
       return res.status(400).json({
         message: err.message || "파일 업로드 중 오류가 발생했습니다.",
-      });
-    } else if (err) {
-      // 기타 에러
-      console.error("Upload error:", err);
-      return res.status(500).json({
-        message: "서버 오류가 발생했습니다.",
       });
     }
 
@@ -1581,6 +1575,12 @@ app.post("/api/upload", (req, res) => {
         return res.status(400).json({ message: "파일이 없습니다." });
       }
       const fileUrl = `/uploads/${req.file.filename}`;
+      console.log("Upload successful:", {
+        originalName: req.file.originalname,
+        filename: req.file.filename,
+        path: req.file.path,
+        url: fileUrl,
+      });
       res.json({ url: fileUrl });
     } catch (error) {
       console.error("File processing error:", error);
@@ -1590,4 +1590,4 @@ app.post("/api/upload", (req, res) => {
 });
 
 // 정적 파일 제공
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
