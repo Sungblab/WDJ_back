@@ -462,7 +462,7 @@ app.get("/api/notices/:id", async (req, res) => {
     }
     res.json(notice);
   } catch (error) {
-    console.error("공지사항 조회 중 오류 ���생:", error);
+    console.error("공지사항 조회 중 오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
@@ -483,7 +483,7 @@ app.get("/api/notices", async (req, res) => {
       currentPage: page,
     });
   } catch (error) {
-    console.error("공지사항 목록 조회 중 오오류 발생:", error);
+    console.error("공지사항 목록 조회 중 오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
@@ -539,7 +539,7 @@ app.post(
       user.password = hashedPassword;
       await user.save();
 
-      res.json({ message: "비밀번호호가 초기화되었습니다." });
+      res.json({ message: "비밀번호가 초기화되었습니다." });
     } catch (error) {
       console.error("비밀번호 초기화 중 오류 발생:", error);
       res.status(500).json({ message: "서버 오류" });
@@ -822,7 +822,7 @@ function renderUsers(users) {
     // createdAt이 존재하는지 확인하고 포맷팅
     const formattedDate = user.createdAt
       ? formatDate(user.createdAt)
-      : "날짜 없음";
+      : "��짜 없음";
 
     tr.innerHTML = `
       <td class="p-3">
@@ -915,7 +915,7 @@ const CommentSchema = new mongoose.Schema({
 
 const Comment = mongoose.model("Comment", CommentSchema);
 
-// 보안 헤헤더 설정
+// 보안 헤헤더 ��정
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -963,7 +963,7 @@ app.get("/api/meals", async (req, res) => {
   }
 });
 
-// 학사일정 조회 API
+// 학사일��� 조회 API
 app.get("/api/schedule", async (req, res) => {
   try {
     const { year, month } = req.query;
@@ -1001,7 +1001,7 @@ app.get("/api/schedule", async (req, res) => {
     res.json(schedules);
   } catch (error) {
     console.error("학사일정 조회 중 오류:", error);
-    // 오류 발생 시 빈 배�� 반환
+    // 오류 발생 시 빈 배열 반환
     res.json([]);
   }
 });
@@ -1312,7 +1312,7 @@ app.delete("/api/posts/:id", async (req, res) => {
     res.json({ message: "게시글이 삭제되었습니다." });
   } catch (error) {
     console.error("게시글 삭제 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
+    res.status(500).json({ message: "서버 오��" });
   }
 });
 
@@ -1439,7 +1439,7 @@ app.get(
       });
     } catch (error) {
       console.error("통계 조회 중 오류:", error);
-      res.status(500).json({ message: "서버 오오류" });
+      res.status(500).json({ message: "서버 오류" });
     }
   }
 );
@@ -1533,7 +1533,7 @@ app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
   res.json({ valid: true });
 });
 
-// multer 설정 수정
+// multer ���정 수정
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, "uploads");
@@ -1572,7 +1572,7 @@ app.post("/api/upload", (req, res) => {
     if (err) {
       console.error("Upload error:", err);
       return res.status(400).json({
-        message: err.message || "파일 업���드 중 오류가 발생했습니다.",
+        message: err.message || "파일 업로드 중 오류가 발생했습니다.",
       });
     }
 
@@ -1581,8 +1581,12 @@ app.post("/api/upload", (req, res) => {
         return res.status(400).json({ message: "파일이 없습니다." });
       }
 
-      // 파일 URL 생성
-      const fileUrl = `/uploads/${req.file.filename}`;
+      // API_BASE_URL을 포함한 전체 URL 반환
+      const fileUrl = `${
+        process.env.API_BASE_URL ||
+        "https://port-0-wdj-back-lz9cd9taff85e9dc.sel4.cloudtype.app"
+      }/uploads/${req.file.filename}`;
+
       console.log("Upload successful:", {
         originalName: req.file.originalname,
         filename: req.file.filename,
@@ -1598,5 +1602,5 @@ app.post("/api/upload", (req, res) => {
   });
 });
 
-// 정적 파일 제공 설정 추가
+// uploads 디렉토리 정적 파일 제공 설정을 상단으로 이동
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
