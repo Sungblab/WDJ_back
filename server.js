@@ -131,7 +131,7 @@ const checkBoardAccess = (req, res, next) => {
   }
 
   console.log("Access denied");
-  res.status(403).json({ message: "접근 권한이 ���요합니다." });
+  res.status(403).json({ message: "접근 권한이 필요합니다." });
 };
 
 // JWT 토큰 생성 함수 수정
@@ -346,7 +346,7 @@ app.delete(
         return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
       }
       await User.findByIdAndDelete(userId);
-      res.json({ message: "사용자가 성공적으로 삭제되었습니다." });
+      res.json({ message: "사용자가 성공적으로 삭제되었습��다." });
     } catch (error) {
       console.error("사용자 삭제 중 오류 발생:", error);
       res.status(500).json({ message: "서버 오류" });
@@ -657,7 +657,7 @@ app.post("/api/petitions", authenticateToken, async (req, res) => {
       title,
       content,
       author,
-      expiresAt: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000), // 20일 후 만료
+      expiresAt: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000), // 20일 ��� 만료
     });
 
     await petition.save();
@@ -826,7 +826,7 @@ function maskIP(ip) {
   return `${parts[0]}.${parts[1]}`; // 앞의 부분만 표시
 }
 
-// 날짜 포맷팅 함수 수정
+// ��짜 포맷팅 함수 수정
 function formatDate(dateString) {
   try {
     const date = new Date(dateString);
@@ -1665,7 +1665,7 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
     }
 
     if (!post.isAnonymous) {
-      return res.status(400).json({ message: "익명 게시글�� 아닙니다." });
+      return res.status(400).json({ message: "익명 게시글 아닙니다." });
     }
 
     if (!password) {
@@ -1920,3 +1920,119 @@ app.get("/api/posts/preview", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
+
+// 관리자 통계 API
+app.get(
+  "/api/admin/statistics",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const totalUsers = await User.countDocuments();
+      const pendingUsers = await User.countDocuments({ isApproved: false });
+      const adminUsers = await User.countDocuments({ isAdmin: true });
+      const totalPosts = await Post.countDocuments();
+      const totalComments = await Comment.countDocuments();
+      const totalPetitions = await Petition.countDocuments();
+
+      res.json({
+        totalUsers,
+        pendingUsers,
+        adminUsers,
+        totalPosts,
+        totalComments,
+        totalPetitions,
+      });
+    } catch (error) {
+      console.error("통계 조회 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
+
+// 관리자용 사용자 검색 API
+app.get(
+  "/api/auth/admin/users/search",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const { page = 1, limit = 10, filter = "all", search = "" } = req.query;
+      const skip = (page - 1) * limit;
+
+      // 검색 쿼리 구성
+      let query = {};
+
+      // 필터 적용
+      if (filter === "admin") {
+        query.isAdmin = true;
+      } else if (filter === "user") {
+        query.isAdmin = false;
+        query.isApproved = true;
+      } else if (filter === "pending") {
+        query.isApproved = false;
+      }
+
+      // 검색어 적용
+      if (search) {
+        query.$or = [
+          { username: { $regex: search, $options: "i" } },
+          { realName: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      // 사용자 목록 조회
+      const users = await User.find(query)
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit));
+
+      // 전체 사용자 수
+      const total = await User.countDocuments(query);
+
+      res.json({
+        users,
+        currentPage: Number(page),
+        totalPages: Math.ceil(total / limit),
+        total,
+      });
+    } catch (error) {
+      console.error("사용자 검색 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
+
+// 일괄 처리 API
+app.post(
+  "/api/admin/users/bulk",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const { action, userIds } = req.body;
+
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: "선택된 사용자가 없습니다." });
+      }
+
+      if (action === "delete") {
+        await User.deleteMany({ _id: { $in: userIds } });
+        res.json({ message: `${userIds.length}명의 사용자가 삭제되었습니다.` });
+      } else if (action === "approve") {
+        await User.updateMany(
+          { _id: { $in: userIds } },
+          { $set: { isApproved: true } }
+        );
+        res.json({ message: `${userIds.length}명의 사용자가 승인되었습니다.` });
+      } else {
+        res.status(400).json({ message: "잘못된 작업입니다." });
+      }
+    } catch (error) {
+      console.error("일괄 처리 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
