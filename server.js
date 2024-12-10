@@ -176,7 +176,7 @@ app.post("/api/login", async (req, res) => {
 
     if (!user.isApproved) {
       return res.status(403).json({
-        message: "관리자의 승인을 기다리고 있니다.",
+        message: "관리자의 승인을 기다리고 있습니다.",
       });
     }
 
@@ -222,7 +222,7 @@ app.post(
         return true;
       }),
     body("realName").notEmpty().withMessage("실명을 입력해주세요."),
-    body("nickname").notEmpty().withMessage("닉네임을 입력���주세요."),
+    body("nickname").notEmpty().withMessage("닉네임을 입력해주세요."),
     body("password")
       .notEmpty()
       .withMessage("비밀번호를 입력해주세요.")
@@ -748,7 +748,7 @@ async function checkExpiredPetitions() {
   }
 }
 
-// 청원 삭제 API (���리자용)
+// 청원 삭제 API (관리자용)
 app.delete(
   "/api/petitions/:id",
   authenticateToken,
@@ -778,17 +778,13 @@ checkExpiredPetitions();
 // IP 주소 마스킹 함수 수정
 function maskIP(ip) {
   if (!ip) return "";
-  
-  // IPv6 형식을 IPv4로 변환 (::ffff:127.0.0.1 -> 127.0.0.1)
+  // IPv6 형식(::ffff:127.0.0.1)에서 IPv4 부분만 추출
   const ipv4Match = ip.match(/(?::(\d+\.\d+\.\d+\.\d+))$/);
   const ipv4 = ipv4Match ? ipv4Match[1] : ip;
-  
-  // IPv4 주소를 점으로 분리
-  const parts = ipv4.split('.');
+
+  const parts = ipv4.split(".");
   if (parts.length !== 4) return "";
-  
-  // 전체 IP 표시
-  return parts.join('.');
+  return `${parts[0]}.${parts[1]}`; // 앞의 부분만 표시
 }
 
 // 날짜 포맷팅 함수 수정
@@ -902,7 +898,7 @@ PostSchema.virtual("voteCount").get(function () {
 
 const Post = mongoose.model("Post", PostSchema);
 
-// 댓글 모델 정
+// 댓글 모델 정의
 const CommentSchema = new mongoose.Schema({
   content: { type: String, required: true },
   author: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // optional for anonymous
@@ -1259,7 +1255,7 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// 게시�� 삭제 API
+// 게시글 삭제 API
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     const { password } = req.body;
@@ -1331,22 +1327,20 @@ app.post("/api/posts", async (req, res) => {
       board = "general",
       isAnonymous,
       anonymousNick,
-      anonymousPassword
+      anonymousPassword,
     } = req.body;
-    
-    // 클라이언트 IP 가져오기
-    const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    
+    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+
     let postData = {
       title,
       content,
       board,
       createdAt: new Date(),
-      ipAddress: clientIP, // 원본 IP 저장
+      ipAddress: req.ip,
       views: 0,
       upvoteCount: 0,
       downvoteCount: 0,
-      score: 0
+      score: 0,
     };
 
     // 로그인한 사용자인 경우
@@ -1514,7 +1508,7 @@ app.post(
       const { action, userIds } = req.body;
 
       if (!Array.isArray(userIds) || userIds.length === 0) {
-        return res.status(400).json({ message: "���택된 사용자가 없습니다." });
+        return res.status(400).json({ message: "선택된 사용자가 없습니다." });
       }
 
       if (action === "delete") {
@@ -1618,16 +1612,17 @@ app.post("/api/posts/:id/comments", async (req, res) => {
   try {
     const postId = req.params.id;
     const { content, isAnonymous, anonymousNick, anonymousPassword } = req.body;
-    
-    // 클라이언트 IP 가져오기
-    const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
+    }
 
     const commentData = {
       content,
       post: postId,
       isAnonymous,
       createdAt: new Date(),
-      ipAddress: clientIP // 원본 IP 저장
     };
 
     if (isAnonymous) {
@@ -1638,6 +1633,7 @@ app.post("/api/posts/:id/comments", async (req, res) => {
       }
       commentData.anonymousNick = anonymousNick || "ㅇㅇ";
       commentData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
+      commentData.ipAddress = req.ip;
     } else {
       // 로그인한 사용자의 경우
       const token =
