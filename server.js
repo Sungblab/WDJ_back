@@ -784,7 +784,7 @@ function maskIP(ip) {
 
   const parts = ipv4.split(".");
   if (parts.length !== 4) return "";
-  return `${parts[0]}.${parts[1]}`; // 앞의 부분만 표시
+  return `${parts[2]}.${parts[3]}`; // 뒤의 두 부분만 표시
 }
 
 // 날짜 포맷팅 함수 수정
@@ -992,7 +992,7 @@ app.get("/api/schedule", async (req, res) => {
 
     // NEIS API가 이터가 없을 때 RESULT 객체를 반환하는 경우 처리
     if (response.data.RESULT?.CODE === "INFO-200") {
-      // 데데이터가 없는 경우 빈 배열 반환
+      // 데이터가 없는 경우 빈 배열 반환
       return res.json([]);
     }
 
@@ -1213,7 +1213,7 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
     }
 
-    // 관리자는 모든 게시글 수정 가능 (비밀번호 체크 없이)
+    // 관리자인 경우 모든 게시글 수정 가능 (비밀번호 체크 없이)
     const isAdmin = req.user && req.user.isAdmin;
 
     if (isAdmin) {
@@ -1274,12 +1274,7 @@ app.delete("/api/posts/:id", async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         const user = await User.findById(decoded.id);
 
-        // 관리자이거나 자신의 게시글인 경우 권한 부여
-        if (
-          user &&
-          (user.isAdmin ||
-            (post.author && post.author.toString() === user._id.toString()))
-        ) {
+        if (user && (user.isAdmin || (post.author && post.author.toString() === user._id.toString()))) {
           isAuthorized = true;
         }
       } catch (error) {
@@ -1292,14 +1287,18 @@ app.delete("/api/posts/:id", async (req, res) => {
       if (!password) {
         return res.status(400).json({ message: "비밀번호를 입력해주세요." });
       }
-      const isPasswordValid = await bcrypt.compare(
-        password,
-        post.anonymousPassword
-      );
+      
+      // 디버깅을 위한 로그 추가
+      console.log('Comparing passwords:', {
+        provided: password,
+        stored: post.anonymousPassword,
+        isAnonymous: post.isAnonymous
+      });
+
+      const isPasswordValid = await bcrypt.compare(password, post.anonymousPassword);
+      
       if (!isPasswordValid) {
-        return res
-          .status(403)
-          .json({ message: "비밀번호가 일치하지 않습니다." });
+        return res.status(403).json({ message: "비밀번호가 일치하지 않습니다." });
       }
       isAuthorized = true;
     }
@@ -1356,15 +1355,15 @@ app.post("/api/posts", async (req, res) => {
         console.error("Token verification failed:", error);
       }
     } else {
-      // 비로그인 사용자인 경우
+      // 비로그인 사용자 경우
       if (!anonymousPassword) {
-        return res
-          .status(400)
-          .json({ message: "익명 게시글 작성 시 비밀번호는 필수입니다." });
+        return res.status(400).json({ message: "익명 게시글 작성 시 비밀번호는 필수입니다." });
       }
       postData.isAnonymous = true;
       postData.anonymousNick = anonymousNick || "익명";
-      postData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
+      // 비밀번호 해싱이 제대로 되고 있는지 확인
+      const hashedPassword = await bcrypt.hash(anonymousPassword, 10);
+      postData.anonymousPassword = hashedPassword;
     }
 
     const post = new Post(postData);
@@ -1556,7 +1555,7 @@ const upload = multer({
   storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB 제한
-    files: 1, // 단일 파일만 허용
+    files: 1, // 단일 파일만 용
   },
   fileFilter: (req, file, cb) => {
     // 이미지 파일만 허용
@@ -1600,7 +1599,7 @@ app.post("/api/upload", (req, res) => {
     } catch (error) {
       console.error("File processing error:", error);
       res.status(500).json({ message: "파일 처리 중 오류가 발생했습니다." });
-    }
+    } 
   });
 });
 
@@ -1678,12 +1677,7 @@ app.delete("/api/comments/:id", async (req, res) => {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
         const user = await User.findById(decoded.id);
-        if (
-          user &&
-          (user.isAdmin ||
-            (comment.author &&
-              comment.author.toString() === user._id.toString()))
-        ) {
+        if (user && (user.isAdmin || (comment.author && comment.author.toString() === user._id.toString()))) {
           isAuthorized = true;
         }
       } catch (error) {
@@ -1691,19 +1685,23 @@ app.delete("/api/comments/:id", async (req, res) => {
       }
     }
 
-    // 익명 댓글인 경우 비밀번호 확인
+    // 익명 댓글인 경우 밀번호 확인
     if (!isAuthorized && comment.isAnonymous) {
       if (!password) {
         return res.status(400).json({ message: "비밀번호를 입력해주세요." });
       }
-      const isPasswordValid = await bcrypt.compare(
-        password,
-        comment.anonymousPassword
-      );
+
+      // 디버깅을 위한 로그 추가
+      console.log('Comparing comment passwords:', {
+        provided: password,
+        stored: comment.anonymousPassword,
+        isAnonymous: comment.isAnonymous
+      });
+
+      const isPasswordValid = await bcrypt.compare(password, comment.anonymousPassword);
+      
       if (!isPasswordValid) {
-        return res
-          .status(403)
-          .json({ message: "비밀번호가 일치하지 않습니다." });
+        return res.status(403).json({ message: "비밀번호가 일치하지 않습니다." });
       }
       isAuthorized = true;
     }
@@ -1718,7 +1716,7 @@ app.delete("/api/comments/:id", async (req, res) => {
     // 게시글의 댓글 목록에서도 제거
     const post = await Post.findById(comment.post);
     if (post) {
-      post.comments = post.comments.filter((id) => id.toString() !== commentId);
+      post.comments = post.comments.filter(id => id.toString() !== commentId);
       await post.save();
     }
 
