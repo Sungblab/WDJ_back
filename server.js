@@ -74,7 +74,7 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", UserSchema);
 
-// JWT 검증 미들웨어 정
+// JWT 검증 미들웨어 ���정
 const authenticateToken = async (req, res, next) => {
   try {
     const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
@@ -222,7 +222,7 @@ app.post(
         return true;
       }),
     body("realName").notEmpty().withMessage("실명을 입력해주세요."),
-    body("nickname").notEmpty().withMessage("닉네임을 력해주세요."),
+    body("nickname").notEmpty().withMessage("닉네임을 ��력해주세요."),
     body("password")
       .notEmpty()
       .withMessage("비밀번호를 입력해주세요.")
@@ -443,7 +443,7 @@ app.post("/api/notices", authenticateToken, isAdmin, async (req, res) => {
       title,
       content,
       important,
-      // author 필드는 기���값인 "관리자"로 설정됨
+      // author 필드는 기본값인 "관리자"로 설정됨
     });
     await notice.save();
     res.status(201).json({ message: "공지사항이 생성되었습니다.", notice });
@@ -483,7 +483,7 @@ app.get("/api/notices", async (req, res) => {
       currentPage: page,
     });
   } catch (error) {
-    console.error("공지��항 목록 조회 중 오류 발생:", error);
+    console.error("공지사항 목록 조회 중 오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
@@ -564,7 +564,7 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
 
     console.log("사용자 찾음:", user.username);
 
-    // 현재 비���번호 확인
+    // 현재 비밀번호 확인
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       console.log("현재 비밀번호 불일치:", user.username);
@@ -947,7 +947,7 @@ app.get("/api/meals", async (req, res) => {
       }
     );
 
-    // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경�� 처리
+    // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
     if (response.data.RESULT?.CODE === "INFO-200") {
       // 데이터가 없는 경우 빈 배열 반환
       return res.json([]);
@@ -1290,11 +1290,15 @@ app.delete("/api/posts/:id", async (req, res) => {
       }
 
       // 디버깅을 위한 로그 추가
-      console.log('Comparing comment passwords:', {
-        provided: password,
-        stored: post.anonymousPassword,
-        isAnonymous: post.isAnonymous
+      console.log('Deleting anonymous post:', {
+        postId: post._id,
+        isAnonymous: post.isAnonymous,
+        hasPassword: !!post.anonymousPassword
       });
+
+      if (!post.anonymousPassword) {
+        return res.status(400).json({ message: "게시글에 비밀번호가 설정되어 있지 않습니다." });
+      }
 
       const isPasswordValid = await bcrypt.compare(password, post.anonymousPassword);
       
@@ -1788,33 +1792,6 @@ app.post("/api/posts/:id/vote", async (req, res) => {
     });
   } catch (error) {
     console.error("투표 처리 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
-  }
-});
-
-// 비밀번호 검증 엔드포인트 추가
-app.post('/api/posts/:id/verify-password', async (req, res) => {
-  try {
-    const postId = req.params.id;
-    const { password } = req.body;
-
-    const post = await Post.findById(postId);
-    if (!post) {
-      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
-    }
-
-    if (!post.isAnonymous) {
-      return res.status(400).json({ message: "익명 게시글이 아닙니다." });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, post.anonymousPassword);
-    if (isPasswordValid) {
-      res.json({ message: "비밀번호가 일치합니다.", canDelete: true });
-    } else {
-      res.status(403).json({ message: "비밀번호가 일치하지 않습니다.", canDelete: false });
-    }
-  } catch (error) {
-    console.error("비밀번호 검증 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
   }
 });
