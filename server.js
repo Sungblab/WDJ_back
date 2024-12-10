@@ -1309,6 +1309,7 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
 });
 
 // 게시글 삭제 API 수정
+// 게시글 삭제 API 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     const { password } = req.body;
