@@ -1255,6 +1255,35 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
   }
 });
 
+// 게시글 비밀번호 확인 API
+app.post("/api/posts/:id/verify-password", async (req, res) => {
+  try {
+    const { password } = req.body;
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
+    }
+
+    if (!post.isAnonymous) {
+      return res.status(400).json({ message: "익명 게시글이 아닙니다." });
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      post.anonymousPassword
+    );
+    if (!isPasswordValid) {
+      return res.status(403).json({ message: "비밀번호가 일치하지 않습니다." });
+    }
+
+    res.json({ message: "비밀번호가 확인되었습니다." });
+  } catch (error) {
+    console.error("비밀번호 확인 중 오류:", error);
+    res.status(500).json({ message: "서버 오류" });
+  }
+});
+
 // 게시글 삭제 API 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
@@ -1275,55 +1304,40 @@ app.delete("/api/posts/:id", async (req, res) => {
         const user = await User.findById(decoded.id);
 
         // 관리자이거나 자신의 게시글인 경우
-        if (user && (user.isAdmin || (post.author && post.author.toString() === user._id.toString()))) {
+        if (
+          user &&
+          (user.isAdmin ||
+            (post.author && post.author.toString() === user._id.toString()))
+        ) {
           isAuthorized = true;
         }
       } catch (error) {
-        console.error("Token verification failed:", error);
+        console.error("토큰 검증 오류:", error);
       }
     }
 
     // 익명 게시글인 경우 비밀번호 확인
-    if (!isAuthorized && post.isAnonymous) {
-      if (!password) {
-        return res.status(400).json({ message: "비밀번호를 입력해주세요." });
+    if (!isAuthorized && post.isAnonymous && password) {
+      const isPasswordValid = await bcrypt.compare(
+        password,
+        post.anonymousPassword
+      );
+      if (isPasswordValid) {
+        isAuthorized = true;
       }
-
-      // 디버깅을 위한 로그 추가
-      console.log('Deleting anonymous post:', {
-        postId: post._id,
-        isAnonymous: post.isAnonymous,
-        hasPassword: !!post.anonymousPassword
-      });
-
-      if (!post.anonymousPassword) {
-        return res.status(400).json({ message: "게시글에 비밀번호가 설정되어 있지 않습니다." });
-      }
-
-      const isPasswordValid = await bcrypt.compare(password, post.anonymousPassword);
-      
-      if (!isPasswordValid) {
-        return res.status(403).json({ message: "비밀번호가 일치하지 않습니다." });
-      }
-      isAuthorized = true;
     }
 
     if (!isAuthorized) {
       return res.status(403).json({ message: "삭제 권한이 없습니다." });
     }
 
-    // 게시글과 관련된 댓글들 삭제
-    await Comment.deleteMany({ post: post._id });
-    // 게시글 삭제
-    await Post.findByIdAndDelete(post._id);
-
-    res.json({ message: "게시글이 삭제되었습니다." });
+    await Post.findByIdAndDelete(req.params.id);
+    res.json({ message: "게시글이 성공적으로 삭제되었습니다." });
   } catch (error) {
     console.error("게시글 삭제 중 오류:", error);
-    res.status(500).json({ message: "서버 오류", error: error.message });
+    res.status(500).json({ message: "서버 오류" });
   }
 });
-
 // 게시글 작성 API 추가
 app.post("/api/posts", async (req, res) => {
   try {
@@ -1364,7 +1378,9 @@ app.post("/api/posts", async (req, res) => {
     } else {
       // 비로그인 사용자 경우
       if (!anonymousPassword) {
-        return res.status(400).json({ message: "익명 게시글 작성 시 비밀번호는 필수입니다." });
+        return res
+          .status(400)
+          .json({ message: "익명 게시글 작성 시 비밀번호는 필수입니다." });
       }
       postData.isAnonymous = true;
       postData.anonymousNick = anonymousNick || "익명";
@@ -1606,7 +1622,7 @@ app.post("/api/upload", (req, res) => {
     } catch (error) {
       console.error("File processing error:", error);
       res.status(500).json({ message: "파일 처리 중 오류가 발생했습니다." });
-    } 
+    }
   });
 });
 
@@ -1684,7 +1700,12 @@ app.delete("/api/comments/:id", async (req, res) => {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
         const user = await User.findById(decoded.id);
-        if (user && (user.isAdmin || (comment.author && comment.author.toString() === user._id.toString()))) {
+        if (
+          user &&
+          (user.isAdmin ||
+            (comment.author &&
+              comment.author.toString() === user._id.toString()))
+        ) {
           isAuthorized = true;
         }
       } catch (error) {
@@ -1699,16 +1720,21 @@ app.delete("/api/comments/:id", async (req, res) => {
       }
 
       // 디버깅을 위한 로그 추가
-      console.log('Comparing comment passwords:', {
+      console.log("Comparing comment passwords:", {
         provided: password,
         stored: comment.anonymousPassword,
-        isAnonymous: comment.isAnonymous
+        isAnonymous: comment.isAnonymous,
       });
 
-      const isPasswordValid = await bcrypt.compare(password, comment.anonymousPassword);
-      
+      const isPasswordValid = await bcrypt.compare(
+        password,
+        comment.anonymousPassword
+      );
+
       if (!isPasswordValid) {
-        return res.status(403).json({ message: "비밀번호가 일치하지 않습니다." });
+        return res
+          .status(403)
+          .json({ message: "비밀번호가 일치하지 않습니다." });
       }
       isAuthorized = true;
     }
@@ -1723,7 +1749,7 @@ app.delete("/api/comments/:id", async (req, res) => {
     // 게시글의 댓글 목록에서도 제거
     const post = await Post.findById(comment.post);
     if (post) {
-      post.comments = post.comments.filter(id => id.toString() !== commentId);
+      post.comments = post.comments.filter((id) => id.toString() !== commentId);
       await post.save();
     }
 
