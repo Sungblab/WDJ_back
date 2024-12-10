@@ -775,35 +775,16 @@ setInterval(checkExpiredPetitions, 24 * 60 * 60 * 1000);
 // 서버 시작 시 한 번 실행
 checkExpiredPetitions();
 
-// IP 주소 가져오는 함수 추가
-function getClientIP(req) {
-  const forwardedFor = req.headers["x-forwarded-for"];
-  if (forwardedFor) {
-    // x-forwarded-for 헤더가 있는 경우 첫 번째 IP 사용
-    return forwardedFor.split(",")[0].trim();
-  }
-  // 프록시를 통하지 않은 직접 연결의 경우
-  return (
-    req.connection.remoteAddress ||
-    req.socket.remoteAddress ||
-    req.connection.socket?.remoteAddress
-  );
-}
-
-// IP 마스킹 함수 수정
+// IP 주소 마스킹 함수 수정
 function maskIP(ip) {
   if (!ip) return "";
+  // IPv6 형식(::ffff:127.0.0.1)에서 IPv4 부분만 추출
+  const ipv4Match = ip.match(/(?::(\d+\.\d+\.\d+\.\d+))$/);
+  const ipv4 = ipv4Match ? ipv4Match[1] : ip;
 
-  // IPv6 형식을 IPv4로 변환
-  if (ip.includes("::ffff:")) {
-    ip = ip.replace("::ffff:", "");
-  }
-
-  const parts = ip.split(".");
+  const parts = ipv4.split(".");
   if (parts.length !== 4) return "";
-
-  // 앞의 두 부분만 표시
-  return `${parts[0]}.${parts[1]}`;
+  return `${parts[2]}.${parts[3]}`; // 뒤의 두 부분만 표시
 }
 
 // 날짜 포맷팅 함수 수정
@@ -1303,36 +1284,6 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
   }
 });
 
-// 이미지 URL에서 파일명 추출하는 함수 추가
-function getFileNameFromUrl(url) {
-  if (!url) return null;
-  const matches = url.match(/\/uploads\/([^\/\?#]+)$/);
-  return matches ? matches[1] : null;
-}
-
-// 이미지 파일 삭제 함수 추가
-async function deleteImageFile(content) {
-  try {
-    // 게시글 내용에서 이미지 URL 추출
-    const imageUrls = content.match(/!\[.*?\]\((.*?)\)/g) || [];
-
-    for (const imageMarkdown of imageUrls) {
-      const url = imageMarkdown.match(/\((.*?)\)/)[1];
-      const fileName = getFileNameFromUrl(url);
-
-      if (fileName) {
-        const filePath = path.join(__dirname, "uploads", fileName);
-        if (fs.existsSync(filePath)) {
-          await fs.promises.unlink(filePath);
-          console.log(`이미지 파일 삭제됨: ${fileName}`);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("이미지 파일 삭제 중 오류:", error);
-  }
-}
-
 // 게시글 삭제 API 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
@@ -1380,10 +1331,6 @@ app.delete("/api/posts/:id", async (req, res) => {
       return res.status(403).json({ message: "삭제 권한이 없습니다." });
     }
 
-    // 게시글 내 이미지 파일 삭제
-    await deleteImageFile(post.content);
-
-    // 게시글 삭제
     await Post.findByIdAndDelete(req.params.id);
     res.json({ message: "게시글이 성공적으로 삭제되었습니다." });
   } catch (error) {
@@ -1391,36 +1338,6 @@ app.delete("/api/posts/:id", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
-
-// 주기적인 미사용 이미지 정리 함수 추가
-async function cleanupUnusedImages() {
-  try {
-    const uploadsDir = path.join(__dirname, "uploads");
-    const files = await fs.promises.readdir(uploadsDir);
-
-    for (const file of files) {
-      // 파일이 24시간 이상 지났는지 확인
-      const filePath = path.join(uploadsDir, file);
-      const stats = await fs.promises.stat(filePath);
-      const fileAge = Date.now() - stats.mtimeMs;
-
-      if (fileAge > 24 * 60 * 60 * 1000) {
-        // 24시간
-        // 이미지가 어떤 게시글에서도 사용되지 않는지 확인
-        const posts = await Post.find({ content: new RegExp(file, "i") });
-        if (posts.length === 0) {
-          await fs.promises.unlink(filePath);
-          console.log(`미사용 이미지 삭제됨: ${file}`);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("미사용 이미지 정리 중 오류:", error);
-  }
-}
-
-// 12시간마다 미사용 이미지 정리 실행
-setInterval(cleanupUnusedImages, 12 * 60 * 60 * 1000);
 // 게시글 작성 API 추가
 app.post("/api/posts", async (req, res) => {
   try {
@@ -1432,15 +1349,14 @@ app.post("/api/posts", async (req, res) => {
       anonymousNick,
       anonymousPassword,
     } = req.body;
-
-    const clientIP = getClientIP(req);
+    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
 
     let postData = {
       title,
       content,
       board,
       createdAt: new Date(),
-      ipAddress: clientIP, // 수정된 부분
+      ipAddress: req.ip,
       views: 0,
       upvoteCount: 0,
       downvoteCount: 0,
