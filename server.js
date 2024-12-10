@@ -1284,6 +1284,36 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
   }
 });
 
+// 이미지 URL에서 파일명 추출하는 함수 추가
+function getFileNameFromUrl(url) {
+  if (!url) return null;
+  const matches = url.match(/\/uploads\/([^\/\?#]+)$/);
+  return matches ? matches[1] : null;
+}
+
+// 이미지 파일 삭제 함수 추가
+async function deleteImageFile(content) {
+  try {
+    // 게시글 내용에서 이미지 URL 추출
+    const imageUrls = content.match(/!\[.*?\]\((.*?)\)/g) || [];
+
+    for (const imageMarkdown of imageUrls) {
+      const url = imageMarkdown.match(/\((.*?)\)/)[1];
+      const fileName = getFileNameFromUrl(url);
+
+      if (fileName) {
+        const filePath = path.join(__dirname, "uploads", fileName);
+        if (fs.existsSync(filePath)) {
+          await fs.promises.unlink(filePath);
+          console.log(`이미지 파일 삭제됨: ${fileName}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("이미지 파일 삭제 중 오류:", error);
+  }
+}
+
 // 게시글 삭제 API 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
@@ -1331,6 +1361,10 @@ app.delete("/api/posts/:id", async (req, res) => {
       return res.status(403).json({ message: "삭제 권한이 없습니다." });
     }
 
+    // 게시글 내 이미지 파일 삭제
+    await deleteImageFile(post.content);
+
+    // 게시글 삭제
     await Post.findByIdAndDelete(req.params.id);
     res.json({ message: "게시글이 성공적으로 삭제되었습니다." });
   } catch (error) {
@@ -1338,6 +1372,36 @@ app.delete("/api/posts/:id", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
+
+// 주기적인 미사용 이미지 정리 함수 추가
+async function cleanupUnusedImages() {
+  try {
+    const uploadsDir = path.join(__dirname, "uploads");
+    const files = await fs.promises.readdir(uploadsDir);
+
+    for (const file of files) {
+      // 파일이 24시간 이상 지났는지 확인
+      const filePath = path.join(uploadsDir, file);
+      const stats = await fs.promises.stat(filePath);
+      const fileAge = Date.now() - stats.mtimeMs;
+
+      if (fileAge > 24 * 60 * 60 * 1000) {
+        // 24시간
+        // 이미지가 어떤 게시글에서도 사용되지 않는지 확인
+        const posts = await Post.find({ content: new RegExp(file, "i") });
+        if (posts.length === 0) {
+          await fs.promises.unlink(filePath);
+          console.log(`미사용 이미지 삭제됨: ${file}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("미사용 이미지 정리 중 오류:", error);
+  }
+}
+
+// 12시간마다 미사용 이미지 정리 실행
+setInterval(cleanupUnusedImages, 12 * 60 * 60 * 1000);
 // 게시글 작성 API 추가
 app.post("/api/posts", async (req, res) => {
   try {
