@@ -176,7 +176,7 @@ app.post("/api/login", async (req, res) => {
 
     if (!user.isApproved) {
       return res.status(403).json({
-        message: "관리자의 승인을 기다리고 있습니다.",
+        message: "관리자의 승인을 기다리고 있니다.",
       });
     }
 
@@ -443,7 +443,7 @@ app.post("/api/notices", authenticateToken, isAdmin, async (req, res) => {
       title,
       content,
       important,
-      // author 필드는 기본값인 "관리자"로 설정됨
+      // author 필드는 기본값인 "관���자"로 설정됨
     });
     await notice.save();
     res.status(201).json({ message: "공지사항이 생성되었습니다.", notice });
@@ -777,14 +777,27 @@ checkExpiredPetitions();
 
 // IP 주소 마스킹 함수 수정
 function maskIP(ip) {
-  if (!ip) return "";
-  // IPv6 형식(::ffff:127.0.0.1)에서 IPv4 부분만 추출
-  const ipv4Match = ip.match(/(?::(\d+\.\d+\.\d+\.\d+))$/);
-  const ipv4 = ipv4Match ? ipv4Match[1] : ip;
-
-  const parts = ipv4.split(".");
-  if (parts.length !== 4) return "";
-  return `${parts[0]}.${parts[1]}`; // 앞의 부분만 표시
+  if (!ip) return "unknown";
+  
+  // IPv6 형식을 IPv4로 변환 (::ffff:127.0.0.1 -> 127.0.0.1)
+  const ipv4Match = ip.match(/:?(?::[0-9a-f]*)?:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/i);
+  const ipAddress = ipv4Match ? ipv4Match[1] : ip;
+  
+  // IPv4 주소 처리
+  const parts = ipAddress.split('.');
+  if (parts.length === 4) {
+    // 앞의 두 부분만 보여주고 나머지는 가림
+    return `${parts[0]}.${parts[1]}.*.*`;
+  }
+  
+  // IPv6 주소 처리
+  if (ip.includes(':')) {
+    const parts = ip.split(':');
+    // ��의 두 부분만 보여주고 나머지는 가림
+    return `${parts[0]}:${parts[1]}:****`;
+  }
+  
+  return "unknown";
 }
 
 // 날짜 포맷팅 함수 수정
@@ -1003,7 +1016,7 @@ app.get("/api/schedule", async (req, res) => {
     res.json(schedules);
   } catch (error) {
     console.error("학사일정 조회 중 오류:", error);
-    // 오류 발생 시 빈 배열 반환
+    // 오류 발생 시 빈 배열 ���환
     res.json([]);
   }
 });
@@ -1274,7 +1287,7 @@ app.delete("/api/posts/:id", async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         const user = await User.findById(decoded.id);
 
-        // 관리자이거나 자신의 게시글인 경우 권한 부여
+        // ��리자이거나 자신의 게시글인 경우 권한 부여
         if (
           user &&
           (user.isAdmin ||
@@ -1327,22 +1340,25 @@ app.post("/api/posts", async (req, res) => {
       board = "general",
       isAnonymous,
       anonymousNick,
-      anonymousPassword,
+      anonymousPassword
     } = req.body;
     const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+    
+    // 클라이언트 IP 주소 가져오기
+    const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
 
     let postData = {
       title,
       content,
       board,
       createdAt: new Date(),
-      ipAddress: req.ip,
+      ipAddress: clientIP, // 수정된 부분
       views: 0,
       upvoteCount: 0,
       downvoteCount: 0,
-      score: 0,
+      score: 0
     };
-
+    
     // 로그인한 사용자인 경우
     if (token) {
       try {
@@ -1627,13 +1643,11 @@ app.post("/api/posts/:id/comments", async (req, res) => {
 
     if (isAnonymous) {
       if (!anonymousPassword) {
-        return res
-          .status(400)
-          .json({ message: "익명 댓글 작성 시 비밀번호는 필수입니다." });
+        return res.status(400).json({ message: "익명 댓글 작성 시 비밀번호는 필수입니다." });
       }
       commentData.anonymousNick = anonymousNick || "ㅇㅇ";
       commentData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
-      commentData.ipAddress = req.ip;
+      commentData.ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     } else {
       // 로그인한 사용자의 경우
       const token =
