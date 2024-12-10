@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // CORS 설정
 app.use(
@@ -1662,9 +1663,6 @@ app.post("/api/upload", (req, res) => {
   });
 });
 
-// uploads 디렉토리 정적 파일 제공 설정을 상단으로 이동
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 // 댓글 작성 API
 app.post("/api/posts/:id/comments", async (req, res) => {
   try {
@@ -1858,9 +1856,6 @@ app.post("/api/posts/:id/vote", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
-
-// 정적 파일 제공을 위한 미들웨어 추가
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 이미지 목록 조회 API 추가
 app.get("/api/images", authenticateToken, isAdmin, (req, res) => {
