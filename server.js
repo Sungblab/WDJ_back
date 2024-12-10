@@ -74,7 +74,7 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", UserSchema);
 
-// JWT 검증 미들웨어 수정
+// JWT 검증 미들웨어 ���정
 const authenticateToken = async (req, res, next) => {
   try {
     const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
@@ -222,7 +222,7 @@ app.post(
         return true;
       }),
     body("realName").notEmpty().withMessage("실명을 입력해주세요."),
-    body("nickname").notEmpty().withMessage("닉네임을 입력해주세요."),
+    body("nickname").notEmpty().withMessage("닉네임을 ��력해주세요."),
     body("password")
       .notEmpty()
       .withMessage("비밀번호를 입력해주세요.")
@@ -1255,7 +1255,7 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// 게시글 삭제 API
+// 게시글 삭제 API 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     const { password } = req.body;
@@ -1274,6 +1274,7 @@ app.delete("/api/posts/:id", async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         const user = await User.findById(decoded.id);
 
+        // 관리자이거나 자신의 게시글인 경우
         if (user && (user.isAdmin || (post.author && post.author.toString() === user._id.toString()))) {
           isAuthorized = true;
         }
@@ -1287,13 +1288,17 @@ app.delete("/api/posts/:id", async (req, res) => {
       if (!password) {
         return res.status(400).json({ message: "비밀번호를 입력해주세요." });
       }
-      
+
       // 디버깅을 위한 로그 추가
-      console.log('Comparing passwords:', {
-        provided: password,
-        stored: post.anonymousPassword,
-        isAnonymous: post.isAnonymous
+      console.log('Deleting anonymous post:', {
+        postId: post._id,
+        isAnonymous: post.isAnonymous,
+        hasPassword: !!post.anonymousPassword
       });
+
+      if (!post.anonymousPassword) {
+        return res.status(400).json({ message: "게시글에 비밀번호가 설정되어 있지 않습니다." });
+      }
 
       const isPasswordValid = await bcrypt.compare(password, post.anonymousPassword);
       
@@ -1307,13 +1312,15 @@ app.delete("/api/posts/:id", async (req, res) => {
       return res.status(403).json({ message: "삭제 권한이 없습니다." });
     }
 
-    await Post.findByIdAndDelete(post._id);
+    // 게시글과 관련된 댓글들 삭제
     await Comment.deleteMany({ post: post._id });
+    // 게시글 삭제
+    await Post.findByIdAndDelete(post._id);
 
     res.json({ message: "게시글이 삭제되었습니다." });
   } catch (error) {
     console.error("게시글 삭제 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
+    res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
 
