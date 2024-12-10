@@ -775,16 +775,38 @@ setInterval(checkExpiredPetitions, 24 * 60 * 60 * 1000);
 // 서버 시작 시 한 번 실행
 checkExpiredPetitions();
 
+// Express 신뢰할 수 있는 프록시 설정 추가
+app.set("trust proxy", true);
+
+// IP 주소를 가져오는 함수
+function getClientIP(req) {
+  // X-Forwarded-For 헤더에서 IP 확인
+  const forwardedFor = req.headers["x-forwarded-for"];
+  if (forwardedFor) {
+    // 첫 번째 IP가 실제 클라이언트 IP
+    return forwardedFor.split(",")[0].trim();
+  }
+  // X-Real-IP 헤더 확인
+  const realIP = req.headers["x-real-ip"];
+  if (realIP) {
+    return realIP;
+  }
+  // 직접 연결된 경우 remoteAddress 사용
+  return req.connection.remoteAddress;
+}
+
 // IP 주소 마스킹 함수 수정
 function maskIP(ip) {
   if (!ip) return "";
+
   // IPv6 형식(::ffff:127.0.0.1)에서 IPv4 부분만 추출
   const ipv4Match = ip.match(/(?::(\d+\.\d+\.\d+\.\d+))$/);
   const ipv4 = ipv4Match ? ipv4Match[1] : ip;
 
   const parts = ipv4.split(".");
   if (parts.length !== 4) return "";
-  return `${parts[2]}.${parts[3]}`; // 뒤의 두 부분만 표시
+
+  return `${parts[2]}.${parts[3]}`;
 }
 
 // 날짜 포맷팅 함수 수정
@@ -1338,7 +1360,8 @@ app.delete("/api/posts/:id", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
-// 게시글 작성 API 추가
+
+// 게시글 작성 API에서 IP 가져오기 수정
 app.post("/api/posts", async (req, res) => {
   try {
     const {
@@ -1356,7 +1379,7 @@ app.post("/api/posts", async (req, res) => {
       content,
       board,
       createdAt: new Date(),
-      ipAddress: req.ip,
+      ipAddress: getClientIP(req), // 수정된 부분
       views: 0,
       upvoteCount: 0,
       downvoteCount: 0,
@@ -1656,6 +1679,7 @@ app.post("/api/posts/:id/comments", async (req, res) => {
       commentData.anonymousNick = anonymousNick || "ㅇㅇ";
       commentData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
       commentData.ipAddress = req.ip;
+      commentData.ipAddress = getClientIP(req); // 수정된 부분
     } else {
       // 로그인한 사용자의 경우
       const token =
