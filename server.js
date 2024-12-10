@@ -1859,6 +1859,44 @@ app.post("/api/posts/:id/vote", async (req, res) => {
   }
 });
 
+// 이미지 목록 조회 API
+app.get("/api/images", authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const files = fs.readdirSync(uploadsDir);
+    const images = files.filter((file) => {
+      const ext = path.extname(file).toLowerCase();
+      return [".jpg", ".jpeg", ".png", ".gif"].includes(ext);
+    });
+    res.json(images);
+  } catch (error) {
+    console.error("이미지 목록 조회 중 오류:", error);
+    res.status(500).json({ message: "서버 오류" });
+  }
+});
+
+// 이미지 삭제 API
+app.delete(
+  "/api/images/:filename",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const filepath = path.join(uploadsDir, filename);
+
+      if (!fs.existsSync(filepath)) {
+        return res.status(404).json({ message: "파일을 찾을 수 없습니다." });
+      }
+
+      fs.unlinkSync(filepath);
+      res.json({ message: "이미지가 성공적으로 삭제되었습니다." });
+    } catch (error) {
+      console.error("이미지 삭제 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
+
 // 이미지 삭제 API 추가
 app.delete(
   "/api/images/:filename",
