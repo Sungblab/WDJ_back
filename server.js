@@ -775,16 +775,35 @@ setInterval(checkExpiredPetitions, 24 * 60 * 60 * 1000);
 // 서버 시작 시 한 번 실행
 checkExpiredPetitions();
 
-// IP 주소 마스킹 함수 수정
+// IP 주소 가져오는 함수 추가
+function getClientIP(req) {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  if (forwardedFor) {
+    // x-forwarded-for 헤더가 있는 경우 첫 번째 IP 사용
+    return forwardedFor.split(",")[0].trim();
+  }
+  // 프록시를 통하지 않은 직접 연결의 경우
+  return (
+    req.connection.remoteAddress ||
+    req.socket.remoteAddress ||
+    req.connection.socket?.remoteAddress
+  );
+}
+
+// IP 마스킹 함수 수정
 function maskIP(ip) {
   if (!ip) return "";
-  // IPv6 형식(::ffff:127.0.0.1)에서 IPv4 부분만 추출
-  const ipv4Match = ip.match(/(?::(\d+\.\d+\.\d+\.\d+))$/);
-  const ipv4 = ipv4Match ? ipv4Match[1] : ip;
 
-  const parts = ipv4.split(".");
+  // IPv6 형식을 IPv4로 변환
+  if (ip.includes("::ffff:")) {
+    ip = ip.replace("::ffff:", "");
+  }
+
+  const parts = ip.split(".");
   if (parts.length !== 4) return "";
-  return `${parts[2]}.${parts[3]}`; // 뒤의 두 부분만 표시
+
+  // 앞의 두 부분만 표시
+  return `${parts[0]}.${parts[1]}`;
 }
 
 // 날짜 포맷팅 함수 수정
@@ -1413,14 +1432,15 @@ app.post("/api/posts", async (req, res) => {
       anonymousNick,
       anonymousPassword,
     } = req.body;
-    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+
+    const clientIP = getClientIP(req);
 
     let postData = {
       title,
       content,
       board,
       createdAt: new Date(),
-      ipAddress: req.ip,
+      ipAddress: clientIP, // 수정된 부분
       views: 0,
       upvoteCount: 0,
       downvoteCount: 0,
