@@ -74,7 +74,7 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", UserSchema);
 
-// JWT 검증 미들웨어 수정
+// JWT 검증 미들웨어 ���정
 const authenticateToken = async (req, res, next) => {
   try {
     const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
@@ -222,7 +222,7 @@ app.post(
         return true;
       }),
     body("realName").notEmpty().withMessage("실명을 입력해주세요."),
-    body("nickname").notEmpty().withMessage("닉네임을 입력해주세요."),
+    body("nickname").notEmpty().withMessage("닉네임을 입��해주세요."),
     body("password")
       .notEmpty()
       .withMessage("비밀번호를 입력해주세요.")
@@ -786,15 +786,15 @@ function maskIP(ip) {
   // IPv4 주소 처리
   const parts = ipAddress.split('.');
   if (parts.length === 4) {
-    // 앞의 두 부분만 보여주고 나머지는 가림
-    return `${parts[0]}.${parts[1]}.*.*`;
+    // 앞의 두 부분을 가리고 뒤의 두 부분을 보여줌
+    return `*.*.${parts[2]}.${parts[3]}`;
   }
   
   // IPv6 주소 처리
   if (ip.includes(':')) {
     const parts = ip.split(':');
-    // ��의 두 부분만 보여주고 나머지는 가림
-    return `${parts[0]}:${parts[1]}:****`;
+    // 앞 부분을 가리고 뒤의 두 부분을 보여줌
+    return `****:${parts[parts.length-2]}:${parts[parts.length-1]}`;
   }
   
   return "unknown";
@@ -1303,7 +1303,7 @@ app.delete("/api/posts/:id", async (req, res) => {
     // 익명 게시글인 경우 비밀번호 확인
     if (!isAuthorized && post.isAnonymous) {
       if (!password) {
-        return res.status(400).json({ message: "비밀번호를 입력해주세요." });
+        return res.status(400).json({ message: "비밀번호�� 입력해주세요." });
       }
       const isPasswordValid = await bcrypt.compare(
         password,
