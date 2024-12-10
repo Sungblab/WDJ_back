@@ -74,7 +74,7 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", UserSchema);
 
-// JWT 검증 미들웨어 ���정
+// JWT 검증 미들웨어 정
 const authenticateToken = async (req, res, next) => {
   try {
     const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
@@ -222,7 +222,7 @@ app.post(
         return true;
       }),
     body("realName").notEmpty().withMessage("실명을 입력해주세요."),
-    body("nickname").notEmpty().withMessage("닉네임을 ��력해주세요."),
+    body("nickname").notEmpty().withMessage("닉네임을 입력해주세요."),
     body("password")
       .notEmpty()
       .withMessage("비밀번호를 입력해주세요.")
@@ -907,6 +907,7 @@ const PostSchema = new mongoose.Schema({
   score: { type: Number, default: 0 },
   upvoteIPs: [{ type: String }],
   downvoteIPs: [{ type: String }],
+  images: [{ type: String }],
 });
 
 // 투표 처리 시 사용할 가상 필드 추가
@@ -1353,6 +1354,17 @@ app.delete("/api/posts/:id", async (req, res) => {
       return res.status(403).json({ message: "삭제 권한이 없습니다." });
     }
 
+    // 게시글에 연결된 이미지 삭제
+    if (post.images && post.images.length > 0) {
+      post.images.forEach((imagePath) => {
+        const fullPath = path.join(__dirname, imagePath);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          console.log(`이미지 삭제됨: ${fullPath}`);
+        }
+      });
+    }
+
     await Post.findByIdAndDelete(req.params.id);
     res.json({ message: "게시글이 성공적으로 삭제되었습니다." });
   } catch (error) {
@@ -1384,6 +1396,7 @@ app.post("/api/posts", async (req, res) => {
       upvoteCount: 0,
       downvoteCount: 0,
       score: 0,
+      images: req.body.images || [], // 이미지 경로 추가
     };
 
     // 로그인한 사용자인 경우
@@ -1845,3 +1858,28 @@ app.post("/api/posts/:id/vote", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
+
+// 이미지 삭제 API 추가
+app.delete(
+  "/api/images/:filename",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const filePath = path.join(__dirname, "uploads", filename);
+
+      // 파일 존재 여부 확인
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "파일을 찾을 수 없습니다." });
+      }
+
+      // 파일 삭제
+      fs.unlinkSync(filePath);
+      res.json({ message: "이미지가 삭제되었습니다." });
+    } catch (error) {
+      console.error("이미지 삭제 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
