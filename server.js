@@ -74,7 +74,7 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model("User", UserSchema);
 
-// JWT 검증 미들웨어 ���정
+// JWT 검증 미들웨어 ���의
 const authenticateToken = async (req, res, next) => {
   try {
     const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
@@ -443,7 +443,7 @@ app.post("/api/notices", authenticateToken, isAdmin, async (req, res) => {
       title,
       content,
       important,
-      // author 필드는 기본값인 "관���자"로 설정됨
+      // author ���드는 기본값인 "관리자"로 설정됨
     });
     await notice.save();
     res.status(201).json({ message: "공지사항이 생성되었습니다.", notice });
@@ -562,7 +562,7 @@ app.post("/api/change-password", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
     }
 
-    console.log("사용자 찾음:", user.username);
+    console.log("사용자 찾���:", user.username);
 
     // 현재 비밀번호 확인
     const isMatch = await bcrypt.compare(currentPassword, user.password);
@@ -648,7 +648,7 @@ app.get("/api/petitions", authenticateToken, async (req, res) => {
 
     res.json({ petitions });
   } catch (error) {
-    console.error("청원 목록 조회 중 오류 발생:", error);
+    console.error("청원 목록 조회 ��� 오류 발생:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
   }
 });
@@ -687,7 +687,7 @@ app.post("/api/petitions/:id/support", authenticateToken, async (req, res) => {
     }
 
     if (petition.supporters.includes(req.user.id)) {
-      return res.status(400).json({ message: "이미 이 원을 지지하셨습니다." });
+      return res.status(400).json({ message: "이미 이 원을 지지하���습니다." });
     }
 
     petition.supporters.push(req.user.id);
@@ -783,7 +783,7 @@ function maskIP(ip) {
   const ipv4Match = ip.match(/:?(?::[0-9a-f]*)?:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/i);
   const ipAddress = ipv4Match ? ipv4Match[1] : ip;
   
-  // IPv4 주소 처리
+  // IPv4 ���소 처리
   const parts = ipAddress.split('.');
   if (parts.length === 4) {
     // 앞의 두 부분을 가리고 뒤의 두 부분을 보여줌
@@ -1005,7 +1005,7 @@ app.get("/api/schedule", async (req, res) => {
 
     // NEIS API가 이터가 없을 때 RESULT 객체를 반환하는 경우 처리
     if (response.data.RESULT?.CODE === "INFO-200") {
-      // 데데이터가 없는 경우 빈 배열 반환
+      // 데데이터가 없��� 경우 빈 배열 반환
       return res.json([]);
     }
 
@@ -1016,7 +1016,7 @@ app.get("/api/schedule", async (req, res) => {
     res.json(schedules);
   } catch (error) {
     console.error("학사일정 조회 중 오류:", error);
-    // 오류 발생 시 빈 배열 ���환
+    // 오류 발생 시 빈 배열 환
     res.json([]);
   }
 });
@@ -1268,7 +1268,7 @@ app.put("/api/posts/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// 게시글 삭제 API
+// 게시글 삭제 API 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     const { password } = req.body;
@@ -1287,12 +1287,8 @@ app.delete("/api/posts/:id", async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         const user = await User.findById(decoded.id);
 
-        // ��리자이거나 자신의 게시글인 경우 권한 부여
-        if (
-          user &&
-          (user.isAdmin ||
-            (post.author && post.author.toString() === user._id.toString()))
-        ) {
+        // 관리자이거나 자신의 게시글인 경우 권한 부여
+        if (user && (user.isAdmin || (post.author && post.author.toString() === user._id.toString()))) {
           isAuthorized = true;
         }
       } catch (error) {
@@ -1303,443 +1299,41 @@ app.delete("/api/posts/:id", async (req, res) => {
     // 익명 게시글인 경우 비밀번호 확인
     if (!isAuthorized && post.isAnonymous) {
       if (!password) {
-        return res.status(400).json({ message: "비밀번호�� 입력해주세요." });
+        return res.status(400).json({ message: "비밀번호를 입력해주세요." });
       }
-      const isPasswordValid = await bcrypt.compare(
-        password,
-        post.anonymousPassword
-      );
-      if (!isPasswordValid) {
-        return res
-          .status(403)
-          .json({ message: "비밀번호가 일치하지 않습니다." });
+
+      // 디버깅을 위한 로그 추가
+      console.log('Attempting password verification:', {
+        providedPassword: password,
+        hasStoredPassword: !!post.anonymousPassword,
+      });
+
+      try {
+        const isPasswordValid = await bcrypt.compare(password, post.anonymousPassword);
+        console.log('Password verification result:', isPasswordValid);
+        
+        if (!isPasswordValid) {
+          return res.status(403).json({ message: "비밀번호가 일치하지 않습니다." });
+        }
+        isAuthorized = true;
+      } catch (error) {
+        console.error('Password comparison error:', error);
+        return res.status(500).json({ message: "비밀번호 확인 중 오류가 발생했습니다." });
       }
-      isAuthorized = true;
     }
 
     if (!isAuthorized) {
       return res.status(403).json({ message: "삭제 권한이 없습니다." });
     }
 
+    // 게시글과 관련 댓글 삭제
     await Post.findByIdAndDelete(post._id);
     await Comment.deleteMany({ post: post._id });
 
     res.json({ message: "게시글이 삭제되었습니다." });
   } catch (error) {
     console.error("게시글 삭제 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
-  }
-});
-
-// 게시글 작성 API 추가
-app.post("/api/posts", async (req, res) => {
-  try {
-    const {
-      title,
-      content,
-      board = "general",
-      isAnonymous,
-      anonymousNick,
-      anonymousPassword
-    } = req.body;
-    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
-    
-    // 클라이언트 IP 주소 가져오기
-    const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-
-    let postData = {
-      title,
-      content,
-      board,
-      createdAt: new Date(),
-      ipAddress: clientIP, // 수정된 부분
-      views: 0,
-      upvoteCount: 0,
-      downvoteCount: 0,
-      score: 0
-    };
-    
-    // 로그인한 사용자인 경우
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = await User.findById(decoded.id);
-        if (user) {
-          postData.author = user._id;
-          postData.isAnonymous = false;
-        }
-      } catch (error) {
-        console.error("Token verification failed:", error);
-      }
-    } else {
-      // 비로그인 사용자인 경우
-      if (!anonymousPassword) {
-        return res
-          .status(400)
-          .json({ message: "익명 게시글 작성 시 비밀번호는 필수입니다." });
-      }
-      postData.isAnonymous = true;
-      postData.anonymousNick = anonymousNick || "익명";
-      postData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
-    }
-
-    const post = new Post(postData);
-    await post.save();
-
-    res.status(201).json({
-      message: "게시글이 작성되었습니다.",
-      postId: post._id,
-    });
-  } catch (error) {
-    console.error("게시글 작성 중 오류:", error);
     res.status(500).json({ message: "서버 오류", error: error.message });
-  }
-});
-
-// 관리자 로그인 API
-app.post("/api/admin/login", async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    const user = await User.findOne({ username });
-
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(400).json({
-        message: "아이디 또는 비밀번호가 일치하지 않습니다.",
-      });
-    }
-
-    if (!user.isAdmin) {
-      return res.status(403).json({
-        message: "관리자 권한이 없습니다.",
-      });
-    }
-
-    const token = generateToken(user);
-
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 3600000,
-    });
-
-    res.json({
-      message: "관리자 로그인 성공",
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        isAdmin: user.isAdmin,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ message: "서버 오류", error: error.message });
-  }
-});
-
-// 관리자 통계 API
-app.get(
-  "/api/admin/statistics",
-  authenticateToken,
-  isAdmin,
-  async (req, res) => {
-    try {
-      const totalUsers = await User.countDocuments();
-      const pendingUsers = await User.countDocuments({ isApproved: false });
-      const adminUsers = await User.countDocuments({ isAdmin: true });
-      const totalPosts = await Post.countDocuments();
-
-      res.json({
-        totalUsers,
-        pendingUsers,
-        adminUsers,
-        totalPosts,
-      });
-    } catch (error) {
-      console.error("통계 조회 중 오류:", error);
-      res.status(500).json({ message: "서버 오류" });
-    }
-  }
-);
-
-// 사용자 검색 API
-app.get(
-  "/api/admin/users/search",
-  authenticateToken,
-  isAdmin,
-  async (req, res) => {
-    try {
-      const { page = 1, limit = 10, filter = "all", search = "" } = req.query;
-      const skip = (page - 1) * limit;
-
-      let query = {};
-
-      // 필터 적용
-      if (filter === "admin") {
-        query.isAdmin = true;
-      } else if (filter === "user") {
-        query.isAdmin = false;
-      } else if (filter === "pending") {
-        query.isApproved = false;
-      }
-
-      // 검색어 적용
-      if (search) {
-        query.$or = [
-          { username: { $regex: search, $options: "i" } },
-          { realName: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } },
-        ];
-      }
-
-      const users = await User.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .select("-password");
-
-      const total = await User.countDocuments(query);
-      const totalPages = Math.ceil(total / limit);
-
-      res.json({
-        users,
-        currentPage: Number(page),
-        totalPages,
-        total,
-      });
-    } catch (error) {
-      console.error("사용자 검색 중 오류:", error);
-      res.status(500).json({ message: "서버 오류" });
-    }
-  }
-);
-
-// 일괄 처리 API
-app.post(
-  "/api/admin/users/bulk",
-  authenticateToken,
-  isAdmin,
-  async (req, res) => {
-    try {
-      const { action, userIds } = req.body;
-
-      if (!Array.isArray(userIds) || userIds.length === 0) {
-        return res.status(400).json({ message: "선택된 사용자가 없습니다." });
-      }
-
-      if (action === "delete") {
-        await User.deleteMany({ _id: { $in: userIds } });
-        res.json({ message: "선택한 사용자들이 삭제되었습니다." });
-      } else if (action === "approve") {
-        await User.updateMany(
-          { _id: { $in: userIds } },
-          { $set: { isApproved: true } }
-        );
-        res.json({ message: "선택한 사용자들이 승인되었습니다." });
-      } else {
-        res.status(400).json({ message: "잘못된 작업입니다." });
-      }
-    } catch (error) {
-      console.error("일괄 처리 중 오류:", error);
-      res.status(500).json({ message: "서버 오류" });
-    }
-  }
-);
-
-// 토큰 검증 API
-app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
-  res.json({ valid: true });
-});
-
-// multer 정 수정
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, "uploads");
-    // uploads 디렉토리가 없으면 생성
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // 파일명 중복 방지를 위한 타임스탬프 추가
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
-});
-
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB 제한
-    files: 1, // 단일 파일만 허용
-  },
-  fileFilter: (req, file, cb) => {
-    // 이미지 파일만 허용
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("이미지 파일만 업로드 가능합니다."));
-    }
-  },
-});
-
-// 이미지 업로드 API 수정
-app.post("/api/upload", (req, res) => {
-  upload.single("image")(req, res, function (err) {
-    if (err) {
-      console.error("Upload error:", err);
-      return res.status(400).json({
-        message: err.message || "파일 업로드 중 오류가 발생했습니다.",
-      });
-    }
-
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: "파일이 없습니다." });
-      }
-
-      // API_BASE_URL을 포함한 전체 URL 반환
-      const fileUrl = `${
-        process.env.API_BASE_URL ||
-        "https://port-0-wdj-back-lz9cd9taff85e9dc.sel4.cloudtype.app"
-      }/uploads/${req.file.filename}`;
-
-      console.log("Upload successful:", {
-        originalName: req.file.originalname,
-        filename: req.file.filename,
-        path: req.file.path,
-        url: fileUrl,
-      });
-
-      res.json({ url: fileUrl });
-    } catch (error) {
-      console.error("File processing error:", error);
-      res.status(500).json({ message: "파일 처리 중 오류가 발생했습니다." });
-    }
-  });
-});
-
-// uploads 디렉토리 정적 파일 제공 설정을 상단으로 이동
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// 댓글 작성 API
-app.post("/api/posts/:id/comments", async (req, res) => {
-  try {
-    const postId = req.params.id;
-    const { content, isAnonymous, anonymousNick, anonymousPassword } = req.body;
-
-    const post = await Post.findById(postId);
-    if (!post) {
-      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
-    }
-
-    const commentData = {
-      content,
-      post: postId,
-      isAnonymous,
-      createdAt: new Date(),
-    };
-
-    if (isAnonymous) {
-      if (!anonymousPassword) {
-        return res.status(400).json({ message: "익명 댓글 작성 시 비밀번호는 필수입니다." });
-      }
-      commentData.anonymousNick = anonymousNick || "ㅇㅇ";
-      commentData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
-      commentData.ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    } else {
-      // 로그인한 사용자의 경우
-      const token =
-        req.cookies.token || req.headers.authorization?.split(" ")[1];
-      if (!token) {
-        return res.status(401).json({ message: "인증이 필요합니다." });
-      }
-      const decoded = jwt.verify(token, JWT_SECRET);
-      commentData.author = decoded.id;
-    }
-
-    const comment = new Comment(commentData);
-    await comment.save();
-
-    // 게시글의 댓글 목록에 추가
-    post.comments.push(comment._id);
-    await post.save();
-
-    res.status(201).json({ message: "댓글이 작성되었습니다.", comment });
-  } catch (error) {
-    console.error("댓글 작성 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
-  }
-});
-
-// 댓글 삭제 API
-app.delete("/api/comments/:id", async (req, res) => {
-  try {
-    const commentId = req.params.id;
-    const { password } = req.body;
-
-    const comment = await Comment.findById(commentId);
-    if (!comment) {
-      return res.status(404).json({ message: "댓글을 찾을 수 없습니다." });
-    }
-
-    // 권한 확인
-    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
-    let isAuthorized = false;
-
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = await User.findById(decoded.id);
-        if (
-          user &&
-          (user.isAdmin ||
-            (comment.author &&
-              comment.author.toString() === user._id.toString()))
-        ) {
-          isAuthorized = true;
-        }
-      } catch (error) {
-        console.error("Token verification failed:", error);
-      }
-    }
-
-    // 익명 댓글인 경우 비밀번호 확인
-    if (!isAuthorized && comment.isAnonymous) {
-      if (!password) {
-        return res.status(400).json({ message: "비밀번호를 입력해주세요." });
-      }
-      const isPasswordValid = await bcrypt.compare(
-        password,
-        comment.anonymousPassword
-      );
-      if (!isPasswordValid) {
-        return res
-          .status(403)
-          .json({ message: "비밀번호가 일치하지 않습니다." });
-      }
-      isAuthorized = true;
-    }
-
-    if (!isAuthorized) {
-      return res.status(403).json({ message: "삭제 권한이 없습니다." });
-    }
-
-    // 댓글 삭제
-    await Comment.findByIdAndDelete(commentId);
-
-    // 게시글의 댓글 목록에서도 제거
-    const post = await Post.findById(comment.post);
-    if (post) {
-      post.comments = post.comments.filter((id) => id.toString() !== commentId);
-      await post.save();
-    }
-
-    res.json({ message: "댓글이 삭제되었습니다." });
-  } catch (error) {
-    console.error("댓글 삭제 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
   }
 });
 
