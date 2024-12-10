@@ -1859,43 +1859,34 @@ app.post("/api/posts/:id/vote", async (req, res) => {
   }
 });
 
-// 이미지 목록 조회 API
+// 정적 파일 제공을 위한 미들웨어 추가
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// 이미지 목록 조회 API 추가
 app.get("/api/images", authenticateToken, isAdmin, async (req, res) => {
   try {
-    const files = fs.readdirSync(uploadsDir);
-    const images = files.filter((file) => {
-      const ext = path.extname(file).toLowerCase();
-      return [".jpg", ".jpeg", ".png", ".gif"].includes(ext);
+    const uploadsDir = path.join(__dirname, "uploads");
+    fs.readdir(uploadsDir, (err, files) => {
+      if (err) {
+        console.error("Error reading uploads directory:", err);
+        return res
+          .status(500)
+          .json({ message: "이미지 목록을 가져오는데 실패했습니다." });
+      }
+
+      // 이미지 파일만 필터링 (.jpg, .jpeg, .png, .gif 등)
+      const imageFiles = files.filter((file) => {
+        const ext = path.extname(file).toLowerCase();
+        return [".jpg", ".jpeg", ".png", ".gif"].includes(ext);
+      });
+
+      res.json(imageFiles);
     });
-    res.json(images);
   } catch (error) {
     console.error("이미지 목록 조회 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
   }
 });
-
-// 이미지 삭제 API
-app.delete(
-  "/api/images/:filename",
-  authenticateToken,
-  isAdmin,
-  async (req, res) => {
-    try {
-      const filename = req.params.filename;
-      const filepath = path.join(uploadsDir, filename);
-
-      if (!fs.existsSync(filepath)) {
-        return res.status(404).json({ message: "파일을 찾을 수 없습니다." });
-      }
-
-      fs.unlinkSync(filepath);
-      res.json({ message: "이미지가 성공적으로 삭제되었습니다." });
-    } catch (error) {
-      console.error("이미지 삭제 중 오류:", error);
-      res.status(500).json({ message: "서버 오류" });
-    }
-  }
-);
 
 // 이미지 삭제 API 추가
 app.delete(
@@ -1905,16 +1896,21 @@ app.delete(
   async (req, res) => {
     try {
       const filename = req.params.filename;
-      const filePath = path.join(__dirname, "uploads", filename);
+      const filepath = path.join(__dirname, "uploads", filename);
 
-      // 파일 존재 여부 확인
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ message: "파일을 찾을 수 없습니다." });
+      if (!fs.existsSync(filepath)) {
+        return res.status(404).json({ message: "이미지를 찾을 수 없습니다." });
       }
 
-      // 파일 삭제
-      fs.unlinkSync(filePath);
-      res.json({ message: "이미지가 삭제되었습니다." });
+      fs.unlink(filepath, (err) => {
+        if (err) {
+          console.error("Error deleting file:", err);
+          return res
+            .status(500)
+            .json({ message: "이미지 삭제 중 오류가 발생했습니다." });
+        }
+        res.json({ message: "이미지가 성공적으로 삭제되었습니다." });
+      });
     } catch (error) {
       console.error("이미지 삭제 중 오류:", error);
       res.status(500).json({ message: "서버 오류" });
