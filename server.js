@@ -1172,12 +1172,23 @@ app.get("/api/posts", async (req, res) => {
 app.get("/api/posts/:id", async (req, res) => {
   try {
     const postId = req.params.id;
+    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+    let isAdmin = false;
 
-    // ObjectId 유효효성 검사
+    // 관리자 권한 확인
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await User.findById(decoded.id);
+        isAdmin = user?.isAdmin || false;
+      } catch (error) {
+        console.error("토큰 검증 오류:", error);
+      }
+    }
+
+    // ObjectId 유효성 검사
     if (!mongoose.Types.ObjectId.isValid(postId)) {
-      return res
-        .status(400)
-        .json({ message: "유효하지 않은 게시글 ID입니다." });
+      return res.status(400).json({ message: "유효하지 않은 게시글 ID입니다." });
     }
 
     const clientIP = req.ip;
@@ -1203,7 +1214,7 @@ app.get("/api/posts/:id", async (req, res) => {
     // 응답 데이터 가공
     const processedPost = {
       ...post.toObject(),
-      ipAddress: post.isAnonymous ? maskIP(post.ipAddress) : null,
+      ipAddress: isAdmin ? post.ipAddress : (post.isAnonymous ? maskIP(post.ipAddress) : null),
       author: post.isAnonymous
         ? { nickname: post.anonymousNick || "익명" }
         : {
@@ -1213,7 +1224,7 @@ app.get("/api/posts/:id", async (req, res) => {
           },
       comments: post.comments.map((comment) => ({
         ...comment.toObject(),
-        ipAddress: comment.isAnonymous ? maskIP(comment.ipAddress) : null,
+        ipAddress: isAdmin ? comment.ipAddress : (comment.isAnonymous ? maskIP(comment.ipAddress) : null),
         author: comment.isAnonymous
           ? { nickname: comment.anonymousNick || "익명" }
           : comment.author,
@@ -1222,7 +1233,7 @@ app.get("/api/posts/:id", async (req, res) => {
 
     res.json(processedPost);
   } catch (error) {
-    console.error("게시글 조회회 중 오류:", error);
+    console.error("게시글 조회 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
   }
 });
