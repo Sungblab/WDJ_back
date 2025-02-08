@@ -1172,23 +1172,12 @@ app.get("/api/posts", async (req, res) => {
 app.get("/api/posts/:id", async (req, res) => {
   try {
     const postId = req.params.id;
-    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
-    let isAdmin = false;
 
-    // 관리자 권한 확인
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = await User.findById(decoded.id);
-        isAdmin = user?.isAdmin || false;
-      } catch (error) {
-        console.error("토큰 검증 오류:", error);
-      }
-    }
-
-    // ObjectId 유효성 검사
+    // ObjectId 유효효성 검사
     if (!mongoose.Types.ObjectId.isValid(postId)) {
-      return res.status(400).json({ message: "유효하지 않은 게시글 ID입니다." });
+      return res
+        .status(400)
+        .json({ message: "유효하지 않은 게시글 ID입니다." });
     }
 
     const clientIP = req.ip;
@@ -1214,7 +1203,7 @@ app.get("/api/posts/:id", async (req, res) => {
     // 응답 데이터 가공
     const processedPost = {
       ...post.toObject(),
-      ipAddress: isAdmin ? post.ipAddress : (post.isAnonymous ? maskIP(post.ipAddress) : null),
+      ipAddress: post.isAnonymous ? maskIP(post.ipAddress) : null,
       author: post.isAnonymous
         ? { nickname: post.anonymousNick || "익명" }
         : {
@@ -1224,7 +1213,7 @@ app.get("/api/posts/:id", async (req, res) => {
           },
       comments: post.comments.map((comment) => ({
         ...comment.toObject(),
-        ipAddress: isAdmin ? comment.ipAddress : (comment.isAnonymous ? maskIP(comment.ipAddress) : null),
+        ipAddress: comment.isAnonymous ? maskIP(comment.ipAddress) : null,
         author: comment.isAnonymous
           ? { nickname: comment.anonymousNick || "익명" }
           : comment.author,
@@ -1233,7 +1222,7 @@ app.get("/api/posts/:id", async (req, res) => {
 
     res.json(processedPost);
   } catch (error) {
-    console.error("게시글 조회 중 오류:", error);
+    console.error("게시글 조회회 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
   }
 });
@@ -1903,95 +1892,5 @@ app.delete("/api/images/:filename", authenticateToken, isAdmin, (req, res) => {
   } catch (error) {
     console.error("이미지 삭제 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
-  }
-});
-
-// 시간표 모델 정의
-const TimetableSchema = new mongoose.Schema({
-  date: { type: String, required: true },
-  grade: { type: String, required: true },
-  class: { type: String, required: true },
-  periods: [{
-    period: { type: String, required: true },
-    subject: { type: String, required: true }
-  }]
-});
-
-const Timetable = mongoose.model('Timetable', TimetableSchema);
-
-// 시간표 조회 API
-app.get('/api/timetable', async (req, res) => {
-  try {
-    const { grade, classNum, date } = req.query;
-    
-    // NEIS API 호출을 위한 기본 설정
-    const SCHOOL_CODE = '8490065'; // 고정된 학교 코드
-    const OFFICE_CODE = 'Q10';     // 고정된 시도교육청 코드
-    
-    const response = await axios.get('https://open.neis.go.kr/hub/hisTimetable', {
-      params: {
-        KEY: NEIS_API_KEY,
-        Type: 'json',
-        ATPT_OFCDC_SC_CODE: OFFICE_CODE,
-        SD_SCHUL_CODE: SCHOOL_CODE,
-        GRADE: grade,
-        CLASS_NM: classNum,
-        ALL_TI_YMD: date,
-      }
-    });
-
-    // NEIS API 응답 처리
-    if (response.data.RESULT?.CODE === 'INFO-200') {
-      // 데이터가 없는 경우
-      return res.json({ message: '시간표 정보가 없습니다.', data: [] });
-    }
-
-    const timetableData = response.data.hisTimetable?.[1]?.row || [];
-    
-    // 시간표 데이터 가공
-    const formattedTimetable = timetableData.map(item => ({
-      period: item.PERIO,
-      subject: item.ITRT_CNTNT
-    }));
-
-    res.json({
-      message: '시간표 조회 성공',
-      data: {
-        date: date,
-        grade: grade,
-        class: classNum,
-        timetable: formattedTimetable
-      }
-    });
-
-  } catch (error) {
-    console.error('시간표 조회 중 오류:', error);
-    res.status(500).json({ 
-      message: '시간표 조회 중 오류가 발생했습니다.',
-      error: error.message 
-    });
-  }
-});
-
-// 학년/반 목록 조회 API
-app.get('/api/timetable/classes', async (req, res) => {
-  try {
-    // 고정된 학년과 반 정보 반환
-    const classes = {
-      grades: ['1', '2', '3'],
-      classNumbers: Array.from({ length: 10 }, (_, i) => String(i + 1))
-    };
-    
-    res.json({
-      message: '학년/반 목록 조회 성공',
-      data: classes
-    });
-    
-  } catch (error) {
-    console.error('학년/반 목록 조회 중 오류:', error);
-    res.status(500).json({ 
-      message: '학년/반 목록 조회 중 오류가 발생했습니다.',
-      error: error.message 
-    });
   }
 });
