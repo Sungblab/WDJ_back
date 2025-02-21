@@ -1362,8 +1362,8 @@ app.post("/api/upload", (req, res) => {
         return res.status(400).json({ message: "파일이 없습니다." });
       }
 
-      // R2 Public URL 형식 수정
-      const fileUrl = `https://${process.env.R2_BUCKET_NAME}.${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${req.file.key}`;
+      // Cloudflare R2 Public URL 형식으로 수정
+      const fileUrl = `${process.env.R2_PUBLIC_URL}/${req.file.key}`;
 
       console.log("Upload successful:", {
         originalName: req.file.originalname,
