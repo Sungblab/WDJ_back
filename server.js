@@ -1331,21 +1331,8 @@ const upload = multer({
     metadata: function (req, file, cb) {
       cb(null, { fieldName: file.fieldname });
     },
-    // CORS 설정 추가
-    shouldTransform: true,
-    transforms: [
-      {
-        key: "original",
-        transform: function (req, file, cb) {
-          cb(null, {
-            ACL: "public-read",
-            CacheControl: "max-age=31536000",
-            ContentDisposition: "inline",
-            StorageClass: "STANDARD",
-          });
-        },
-      },
-    ],
+    // transforms 제거하고 직접 설정
+    acl: "public-read",
   }),
   limits: {
     fileSize: 5 * 1024 * 1024,
@@ -1375,8 +1362,8 @@ app.post("/api/upload", (req, res) => {
         return res.status(400).json({ message: "파일이 없습니다." });
       }
 
-      // R2 Public URL 생성
-      const fileUrl = `${process.env.R2_PUBLIC_URL}/${req.file.key}`;
+      // R2 Public URL 형식 수정
+      const fileUrl = `https://${process.env.R2_BUCKET_NAME}.${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${req.file.key}`;
 
       console.log("Upload successful:", {
         originalName: req.file.originalname,
