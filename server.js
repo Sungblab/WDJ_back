@@ -30,7 +30,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// CORS 설정
+// CORS 설정 수정
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN
@@ -1308,7 +1308,7 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
   }
 });
 
-// R2 클라이언트 설정 (app 선언 이후에 추가)
+// R2 클라이언트 설정에 CORS 헤더 추가
 const s3Client = new S3Client({
   region: "auto",
   endpoint: process.env.R2_ENDPOINT,
@@ -1318,7 +1318,7 @@ const s3Client = new S3Client({
   },
 });
 
-// multer 설정 수정 (기존 storage 설정 대체)
+// multer-s3 설정 수정
 const upload = multer({
   storage: multerS3({
     s3: s3Client,
@@ -1328,9 +1328,13 @@ const upload = multer({
       cb(null, `${uniqueSuffix}-${file.originalname}`);
     },
     contentType: multerS3.AUTO_CONTENT_TYPE,
+    metadata: function (req, file, cb) {
+      cb(null, { fieldName: file.fieldname });
+    },
+    acl: "public-read", // 이미지에 대한 공개 읽기 권한 설정
   }),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB 제한 유지
+    fileSize: 5 * 1024 * 1024,
     files: 1,
   },
   fileFilter: (req, file, cb) => {
