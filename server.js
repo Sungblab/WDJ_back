@@ -17,7 +17,6 @@ const {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
-  ListObjectsCommand,
 } = require("@aws-sdk/client-s3");
 const multerS3 = require("multer-s3");
 dotenv.config();
@@ -29,6 +28,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // CORS 설정
 app.use(
@@ -59,80 +59,29 @@ if (!mongoURI) {
 
 mongoose
   .connect(mongoURI)
-  .then(() => {
-    console.log("MongoDB 연결 성공 - " + mongoURI);
-    return testR2Connection();
-  })
+  .then(() => console.log("MongoDB 연결 성공 - " + mongoURI))
   .catch((err) => console.error("MongoDB 연결 실패:", err));
 
-// R2 환경변수 검증 추가 (MongoDB 연결 검증 코드 다음에 추가)
-if (
-  !process.env.R2_ACCESS_KEY_ID ||
-  !process.env.R2_SECRET_ACCESS_KEY ||
-  !process.env.R2_BUCKET_NAME ||
-  !process.env.R2_ENDPOINT ||
-  !process.env.R2_PUBLIC_URL
-) {
-  console.error(
-    "Error: R2 configuration is not properly set in environment variables."
-  );
-  process.exit(1);
+// uploads 디렉토리 존재 확인 및 생성
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// R2 클라이언트 설정
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-  },
+// 사용자 모델 정의
+const UserSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  realName: { type: String, required: true },
+  nickname: { type: String, required: true },
+  password: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  isAdmin: { type: Boolean, default: false },
+  isApproved: { type: Boolean, default: false },
 });
 
-// uploads 디렉토리 관련 코드 제거 (더 이상 필요하지 않음)
-// const uploadsDir = path.join(__dirname, "uploads"); ... 부분 삭제
+const User = mongoose.model("User", UserSchema);
 
-// multer-s3 설정
-const upload = multer({
-  storage: multerS3({
-    s3: s3Client,
-    bucket: process.env.R2_BUCKET_NAME,
-    key: function (req, file, cb) {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
-    },
-    contentType: multerS3.AUTO_CONTENT_TYPE,
-  }),
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB 제한
-    files: 1,
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("이미지 파일만 업로드 가능합니다."));
-    }
-  },
-});
-
-// R2 연결 테스트 함수 추가
-async function testR2Connection() {
-  try {
-    await s3Client.send(
-      new ListObjectsCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
-        MaxKeys: 1,
-      })
-    );
-    console.log("R2 connection successful");
-  } catch (error) {
-    console.error("R2 connection failed:", error);
-    process.exit(1);
-  }
-}
-
-// JWT 검증 미들웨어 정의를 먼저
+// JWT 검증 미들웨어 정
 const authenticateToken = async (req, res, next) => {
   try {
     const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
@@ -1365,7 +1314,97 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
   }
 });
 
-// 게시글 삭제 API에서 이미지 삭제 로직 수정
+// R2 클라이언트 설정 (app 선언 이후에 추가)
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+});
+
+// multer 설정 수정 (기존 storage 설정 대체)
+const upload = multer({
+  storage: multerS3({
+    s3: s3Client,
+    bucket: process.env.R2_BUCKET_NAME,
+    key: function (req, file, cb) {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, `${uniqueSuffix}-${file.originalname}`);
+    },
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+  }),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB 제한 유지
+    files: 1,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("이미지 파일만 업로드 가능합니다."));
+    }
+  },
+});
+
+// 이미지 업로드 API 수정
+app.post("/api/upload", (req, res) => {
+  upload.single("image")(req, res, function (err) {
+    if (err) {
+      console.error("Upload error:", err);
+      return res.status(400).json({
+        message: err.message || "파일 업로드 중 오류가 발생했습니다.",
+      });
+    }
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "파일이 없습니다." });
+      }
+
+      // R2 Public URL 생성
+      const fileUrl = `${process.env.R2_PUBLIC_URL}/${req.file.key}`;
+
+      console.log("Upload successful:", {
+        originalName: req.file.originalname,
+        key: req.file.key,
+        location: fileUrl,
+      });
+
+      res.json({ url: fileUrl });
+    } catch (error) {
+      console.error("File processing error:", error);
+      res.status(500).json({ message: "파일 처리 중 오류가 발생했습니다." });
+    }
+  });
+});
+
+// 이미지 삭제 API 수정
+app.delete(
+  "/api/images/:filename",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const filename = req.params.filename;
+
+      await s3Client.send(
+        new DeleteObjectCommand({
+          Bucket: process.env.R2_BUCKET_NAME,
+          Key: filename,
+        })
+      );
+
+      res.json({ message: "이미지가 삭제되었습니다." });
+    } catch (error) {
+      console.error("이미지 삭제 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
+
+// 게시글 삭제 API에서 이미지 삭제 부분 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     const { password } = req.body;
@@ -1414,9 +1453,9 @@ app.delete("/api/posts/:id", async (req, res) => {
 
     // 게시글에 연결된 이미지 삭제
     if (post.images && post.images.length > 0) {
-      const deletePromises = post.images.map(async (imageUrl) => {
+      for (const imageUrl of post.images) {
+        const key = imageUrl.split("/").pop(); // URL에서 파일명 추출
         try {
-          const key = imageUrl.split("/").pop();
           await s3Client.send(
             new DeleteObjectCommand({
               Bucket: process.env.R2_BUCKET_NAME,
@@ -1425,12 +1464,9 @@ app.delete("/api/posts/:id", async (req, res) => {
           );
           console.log(`이미지 삭제됨: ${key}`);
         } catch (error) {
-          console.error(`이미지 삭제 실패: ${imageUrl}`, error);
-          // 개별 이미지 삭제 실패를 전체 작업 실패로 처리하지 않음
+          console.error(`이미지 삭제 실패: ${key}`, error);
         }
-      });
-
-      await Promise.all(deletePromises);
+      }
     }
 
     await Post.findByIdAndDelete(req.params.id);
@@ -1659,6 +1695,25 @@ app.post(
 // 토큰 검증 API
 app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
   res.json({ valid: true });
+});
+
+// 이미지 목록 조회 API 추가
+app.get("/api/images", authenticateToken, isAdmin, (req, res) => {
+  try {
+    const uploadsDir = path.join(__dirname, "uploads");
+    const files = fs.readdirSync(uploadsDir);
+
+    const images = files.map((file) => ({
+      filename: file,
+      url: `/uploads/${file}`,
+      createdAt: fs.statSync(path.join(uploadsDir, file)).birthtime,
+    }));
+
+    res.json(images);
+  } catch (error) {
+    console.error("이미지 목록 조회 중 오류:", error);
+    res.status(500).json({ message: "서버 오류" });
+  }
 });
 
 // 댓글 작성 API
