@@ -13,6 +13,13 @@ const crypto = require("crypto");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsCommand,
+} = require("@aws-sdk/client-s3");
+const multerS3 = require("multer-s3");
 dotenv.config();
 
 const app = express();
@@ -22,7 +29,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // CORS 설정
 app.use(
@@ -53,14 +59,171 @@ if (!mongoURI) {
 
 mongoose
   .connect(mongoURI)
-  .then(() => console.log("MongoDB 연결 성공 - " + mongoURI))
+  .then(() => {
+    console.log("MongoDB 연결 성공 - " + mongoURI);
+    return testR2Connection();
+  })
   .catch((err) => console.error("MongoDB 연결 실패:", err));
 
-// uploads 디렉토리 존재 확인 및 생성
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+// R2 환경변수 검증 추가 (MongoDB 연결 검증 코드 다음에 추가)
+if (
+  !process.env.R2_ACCESS_KEY_ID ||
+  !process.env.R2_SECRET_ACCESS_KEY ||
+  !process.env.R2_BUCKET_NAME ||
+  !process.env.R2_ENDPOINT ||
+  !process.env.R2_PUBLIC_URL
+) {
+  console.error(
+    "Error: R2 configuration is not properly set in environment variables."
+  );
+  process.exit(1);
 }
+
+// R2 클라이언트 설정
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+});
+
+// uploads 디렉토리 관련 코드 제거 (더 이상 필요하지 않음)
+// const uploadsDir = path.join(__dirname, "uploads"); ... 부분 삭제
+
+// multer-s3 설정
+const upload = multer({
+  storage: multerS3({
+    s3: s3Client,
+    bucket: process.env.R2_BUCKET_NAME,
+    key: function (req, file, cb) {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, uniqueSuffix + path.extname(file.originalname));
+    },
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+  }),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB 제한
+    files: 1,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("이미지 파일만 업로드 가능합니다."));
+    }
+  },
+});
+
+// R2 연결 테스트 함수 추가
+async function testR2Connection() {
+  try {
+    await s3Client.send(
+      new ListObjectsCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        MaxKeys: 1,
+      })
+    );
+    console.log("R2 connection successful");
+  } catch (error) {
+    console.error("R2 connection failed:", error);
+    process.exit(1);
+  }
+}
+
+// 이미지 목록 조회 API
+app.get("/api/images", authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+
+    const data = await s3Client.send(
+      new ListObjectsCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        MaxKeys: limit,
+        StartAfter: page > 1 ? `page${page - 1}` : undefined,
+      })
+    );
+
+    const images = data.Contents
+      ? data.Contents.map((object) => ({
+          filename: object.Key,
+          url: `${process.env.R2_PUBLIC_URL}/${object.Key}`,
+          createdAt: object.LastModified,
+          size: object.Size,
+        }))
+      : [];
+
+    res.json({
+      images,
+      hasMore: data.IsTruncated,
+      totalObjects: data.KeyCount,
+    });
+  } catch (error) {
+    console.error("이미지 목록 조회 중 오류:", error);
+    res.status(500).json({ message: "서버 오류" });
+  }
+});
+
+// 이미지 업로드 API
+app.post("/api/upload", (req, res) => {
+  upload.single("image")(req, res, function (err) {
+    if (err) {
+      console.error("Upload error:", err);
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({
+          message: "파일 크기는 5MB를 초과할 수 없습니다.",
+        });
+      }
+      return res.status(400).json({
+        message: err.message || "파일 업로드 중 오류가 발생했습니다.",
+      });
+    }
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "파일이 없습니다." });
+      }
+
+      const fileUrl = `${process.env.R2_PUBLIC_URL}/${req.file.key}`;
+
+      console.log("Upload successful:", {
+        originalName: req.file.originalname,
+        key: req.file.key,
+        location: fileUrl,
+      });
+
+      res.json({ url: fileUrl });
+    } catch (error) {
+      console.error("File processing error:", error);
+      res.status(500).json({ message: "파일 처리 중 오류가 발생했습니다." });
+    }
+  });
+});
+
+// 이미지 삭제 API
+app.delete(
+  "/api/images/:filename",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const filename = req.params.filename;
+
+      await s3Client.send(
+        new DeleteObjectCommand({
+          Bucket: process.env.R2_BUCKET_NAME,
+          Key: filename,
+        })
+      );
+
+      res.json({ message: "이미지가 삭제되었습니다." });
+    } catch (error) {
+      console.error("이미지 삭제 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
 
 // 사용자 모델 정의
 const UserSchema = new mongoose.Schema({
@@ -1308,8 +1471,7 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
   }
 });
 
-// 게시글 삭제 API 수정
-// 게시글 삭제 API 수정
+// 게시글 삭제 API에서 이미지 삭제 로직 수정
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     const { password } = req.body;
@@ -1358,13 +1520,23 @@ app.delete("/api/posts/:id", async (req, res) => {
 
     // 게시글에 연결된 이미지 삭제
     if (post.images && post.images.length > 0) {
-      post.images.forEach((imagePath) => {
-        const fullPath = path.join(__dirname, imagePath);
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-          console.log(`이미지 삭제됨: ${fullPath}`);
+      const deletePromises = post.images.map(async (imageUrl) => {
+        try {
+          const key = imageUrl.split("/").pop();
+          await s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: process.env.R2_BUCKET_NAME,
+              Key: key,
+            })
+          );
+          console.log(`이미지 삭제됨: ${key}`);
+        } catch (error) {
+          console.error(`이미지 삭제 실패: ${imageUrl}`, error);
+          // 개별 이미지 삭제 실패를 전체 작업 실패로 처리하지 않음
         }
       });
+
+      await Promise.all(deletePromises);
     }
 
     await Post.findByIdAndDelete(req.params.id);
@@ -1595,75 +1767,6 @@ app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
   res.json({ valid: true });
 });
 
-// multer 정 수정
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, "uploads");
-    // uploads 디렉토리가 없으면 생성
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // 파일명 중복 방지를 위한 타임스탬프 추가
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
-});
-
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB 제한
-    files: 1, // 단일 파일만 용
-  },
-  fileFilter: (req, file, cb) => {
-    // 이미지 파일만 허용
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("이미지 파일만 업로드 가능합니다."));
-    }
-  },
-});
-
-// 이미지 업로드 API 수정
-app.post("/api/upload", (req, res) => {
-  upload.single("image")(req, res, function (err) {
-    if (err) {
-      console.error("Upload error:", err);
-      return res.status(400).json({
-        message: err.message || "파일 업로드 중 오류가 발생했습니다.",
-      });
-    }
-
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: "파일이 없습니다." });
-      }
-
-      // API_BASE_URL을 포함한 전체 URL 반환
-      const fileUrl = `${
-        process.env.API_BASE_URL ||
-        "https://port-0-wdj-back-lz9cd9taff85e9dc.sel4.cloudtype.app"
-      }/uploads/${req.file.filename}`;
-
-      console.log("Upload successful:", {
-        originalName: req.file.originalname,
-        filename: req.file.filename,
-        path: req.file.path,
-        url: fileUrl,
-      });
-
-      res.json({ url: fileUrl });
-    } catch (error) {
-      console.error("File processing error:", error);
-      res.status(500).json({ message: "파일 처리 중 오류가 발생했습니다." });
-    }
-  });
-});
-
 // 댓글 작성 API
 app.post("/api/posts/:id/comments", async (req, res) => {
   try {
@@ -1854,43 +1957,6 @@ app.post("/api/posts/:id/vote", async (req, res) => {
     });
   } catch (error) {
     console.error("투표 처리 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
-  }
-});
-
-// 이미지 목록 조회 API 추가
-app.get("/api/images", authenticateToken, isAdmin, (req, res) => {
-  try {
-    const uploadsDir = path.join(__dirname, "uploads");
-    const files = fs.readdirSync(uploadsDir);
-
-    const images = files.map((file) => ({
-      filename: file,
-      url: `/uploads/${file}`,
-      createdAt: fs.statSync(path.join(uploadsDir, file)).birthtime,
-    }));
-
-    res.json(images);
-  } catch (error) {
-    console.error("이미지 목록 조회 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
-  }
-});
-
-// 이미지 삭제 API 추가
-app.delete("/api/images/:filename", authenticateToken, isAdmin, (req, res) => {
-  try {
-    const filename = req.params.filename;
-    const filepath = path.join(__dirname, "uploads", filename);
-
-    if (!fs.existsSync(filepath)) {
-      return res.status(404).json({ message: "파일을 찾을 수 없습니다." });
-    }
-
-    fs.unlinkSync(filepath);
-    res.json({ message: "이미지가 삭제되었습니다." });
-  } catch (error) {
-    console.error("이미지 삭제 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
   }
 });
