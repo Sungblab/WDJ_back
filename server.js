@@ -1453,7 +1453,11 @@ app.delete("/api/posts/:id", async (req, res) => {
     // 게시글에 연결된 이미지 삭제
     if (post.images && post.images.length > 0) {
       for (const imageUrl of post.images) {
-        const key = imageUrl.split("/").pop(); // URL에서 파일명 추출
+        // URL에서 파일명을 더 안전하게 추출
+        const key = imageUrl.includes("r2.dev/")
+          ? imageUrl.split("r2.dev/")[1] // R2 URL인 경우
+          : imageUrl.split("/").pop(); // 기존 URL 형식인 경우
+
         try {
           await s3Client.send(
             new DeleteObjectCommand({
@@ -1461,9 +1465,10 @@ app.delete("/api/posts/:id", async (req, res) => {
               Key: key,
             })
           );
-          console.log(`이미지 삭제됨: ${key}`);
+          console.log(`이미지 삭제 성공: ${imageUrl} (key: ${key})`);
         } catch (error) {
-          console.error(`이미지 삭제 실패: ${key}`, error);
+          console.error(`이미지 삭제 실패: ${imageUrl} (key: ${key})`, error);
+          // 이미지 삭제 실패해도 게시글 삭제는 계속 진행
         }
       }
     }
