@@ -1308,7 +1308,7 @@ app.post("/api/posts/:id/verify-password", async (req, res) => {
   }
 });
 
-// R2 클라이언트 설정에 CORS 헤더 추가
+// R2 클라이언트 설정 수정
 const s3Client = new S3Client({
   region: "auto",
   endpoint: process.env.R2_ENDPOINT,
@@ -1331,7 +1331,21 @@ const upload = multer({
     metadata: function (req, file, cb) {
       cb(null, { fieldName: file.fieldname });
     },
-    acl: "public-read", // 이미지에 대한 공개 읽기 권한 설정
+    // CORS 설정 추가
+    shouldTransform: true,
+    transforms: [
+      {
+        key: "original",
+        transform: function (req, file, cb) {
+          cb(null, {
+            ACL: "public-read",
+            CacheControl: "max-age=31536000",
+            ContentDisposition: "inline",
+            StorageClass: "STANDARD",
+          });
+        },
+      },
+    ],
   }),
   limits: {
     fileSize: 5 * 1024 * 1024,
