@@ -1362,10 +1362,8 @@ app.post("/api/upload", (req, res) => {
         return res.status(400).json({ message: "파일이 없습니다." });
       }
 
-      // R2 Public URL 형식으로 수정
+      // R2 Public URL 형식으로 수정 (pub-xxxxx.r2.dev 형식 사용)
       const fileUrl = `https://pub-40e7aec0694f464e99cae0accf466424.r2.dev/${req.file.key}`;
-      // 또는 환경변수에서 가져온 URL 사용
-      // const fileUrl = `${process.env.R2_PUBLIC_URL}/${req.file.key}`;
 
       console.log("Upload successful:", {
         originalName: req.file.originalname,
