@@ -17,6 +17,7 @@ const {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  ListObjectsV2Command,
 } = require("@aws-sdk/client-s3");
 const multerS3 = require("multer-s3");
 dotenv.config();
@@ -28,7 +29,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // CORS 설정
 app.use(
@@ -61,12 +61,6 @@ mongoose
   .connect(mongoURI)
   .then(() => console.log("MongoDB 연결 성공 - " + mongoURI))
   .catch((err) => console.error("MongoDB 연결 실패:", err));
-
-// uploads 디렉토리 존재 확인 및 생성
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
 
 // 사용자 모델 정의
 const UserSchema = new mongoose.Schema({
@@ -1697,16 +1691,20 @@ app.get("/api/admin/validate", authenticateToken, isAdmin, (req, res) => {
   res.json({ valid: true });
 });
 
-// 이미지 목록 조회 API 추가
-app.get("/api/images", authenticateToken, isAdmin, (req, res) => {
+// 이미지 목록 조회 API 수정
+app.get("/api/images", authenticateToken, isAdmin, async (req, res) => {
   try {
-    const uploadsDir = path.join(__dirname, "uploads");
-    const files = fs.readdirSync(uploadsDir);
+    const { objects } = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: process.env.R2_BUCKET_NAME,
+      })
+    );
 
-    const images = files.map((file) => ({
-      filename: file,
-      url: `/uploads/${file}`,
-      createdAt: fs.statSync(path.join(uploadsDir, file)).birthtime,
+    const images = objects.map((object) => ({
+      filename: object.Key,
+      url: `${process.env.R2_PUBLIC_URL}/${object.Key}`,
+      createdAt: object.LastModified,
+      size: object.Size,
     }));
 
     res.json(images);
