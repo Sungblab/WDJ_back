@@ -1168,142 +1168,121 @@ app.get("/api/posts", async (req, res) => {
   }
 });
 
-// 게시글 상성 조회 API
-app.get("/api/posts/:id", async (req, res) => {
-  try {
-    const postId = req.params.id;
+// 관리자용 게시글 검색 API 수정
+app.get(
+  "/api/admin/posts/search",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const { page = 1, limit = 10, board = "all", search = "" } = req.query;
+      const skip = (page - 1) * limit;
 
-    // ObjectId 유효효성 검사
-    if (!mongoose.Types.ObjectId.isValid(postId)) {
-      return res
-        .status(400)
-        .json({ message: "유효하지 않은 게시글 ID입니다." });
+      let query = {};
+
+      if (board !== "all") {
+        query.board = board;
+      }
+
+      if (search) {
+        query.$or = [
+          { title: { $regex: search, $options: "i" } },
+          { content: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      const posts = await Post.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .populate("author", "username")
+        .populate({
+          path: "comments",
+          select:
+            "content author isAnonymous anonymousNick ipAddress createdAt",
+          populate: { path: "author", select: "username" },
+        });
+
+      // 관리자용 응답 데이터 가공
+      const processedPosts = posts.map((post) => {
+        const postObj = post.toObject();
+        // 익명 게시글인 경우에만 IP 주소 포함
+        if (postObj.isAnonymous) {
+          postObj.ipAddress = post.ipAddress; // 원본 IP 주소 노출
+        }
+
+        // 댓글의 IP 주소도 처리
+        if (postObj.comments) {
+          postObj.comments = postObj.comments.map((comment) => ({
+            ...comment,
+            ipAddress: comment.isAnonymous ? comment.ipAddress : null,
+          }));
+        }
+
+        return postObj;
+      });
+
+      const total = await Post.countDocuments(query);
+      const totalPages = Math.ceil(total / limit);
+
+      res.json({
+        posts: processedPosts,
+        currentPage: Number(page),
+        totalPages,
+        total,
+      });
+    } catch (error) {
+      console.error("게시글 검색 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
     }
+  }
+);
 
-    const clientIP = req.ip;
-    const post = await Post.findById(postId)
-      .populate("author", "username nickname realName")
+// 게시글 상세 조회 API 수정
+app.get("/api/posts/:id", authenticateToken, async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .populate("author", "username")
       .populate({
         path: "comments",
-        populate: { path: "author", select: "username nickname" },
+        populate: { path: "author", select: "username" },
       });
 
     if (!post) {
       return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
     }
 
-    // 조회수 증가 (IP 기반)
-    if (!post.viewIPs?.includes(clientIP)) {
-      post.views = (post.views || 0) + 1;
-      if (!post.viewIPs) post.viewIPs = [];
-      post.viewIPs.push(clientIP);
-      await post.save();
-    }
-
-    // 응답 데이터 가공
-    const processedPost = {
-      ...post.toObject(),
-      ipAddress: post.isAnonymous ? maskIP(post.ipAddress) : null,
-      author: post.isAnonymous
-        ? { nickname: post.anonymousNick || "익명" }
-        : {
-            username: post.author?.username,
-            nickname: post.author?.nickname,
-            realName: post.author?.realName,
-          },
-      comments: post.comments.map((comment) => ({
-        ...comment.toObject(),
-        ipAddress: comment.isAnonymous ? maskIP(comment.ipAddress) : null,
-        author: comment.isAnonymous
-          ? { nickname: comment.anonymousNick || "익명" }
-          : comment.author,
-      })),
-    };
-
-    res.json(processedPost);
-  } catch (error) {
-    console.error("게시글 조회회 중 오류:", error);
-    res.status(500).json({ message: "서버 오류" });
-  }
-});
-
-// 게시글 수정 API
-app.put("/api/posts/:id", authenticateToken, async (req, res) => {
-  try {
-    const { title, content, password } = req.body;
-    const post = await Post.findById(req.params.id);
-
-    if (!post) {
-      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
-    }
-
-    // 관리자인 경우 모든 게시글 수정 가능 (비밀번호 체크 없이)
+    // 관리자인 경우 모든 IP 정보 포함
     const isAdmin = req.user && req.user.isAdmin;
+    const postObj = post.toObject();
 
     if (isAdmin) {
-      // 관리자는 즉시 수정 가능
-      post.title = title;
-      post.content = content;
-      post.updatedAt = new Date();
-      await post.save();
-      return res.json({ message: "게시글이 수정되었습니다." });
-    }
-
-    // 일반 사용자 권한 체크
-    if (post.isAnonymous) {
-      if (
-        !password ||
-        !(await bcrypt.compare(password, post.anonymousPassword))
-      ) {
-        return res
-          .status(403)
-          .json({ message: "비밀번호가 일치하지 않습니다." });
+      // 익명 게시글의 IP 주소 포함
+      if (postObj.isAnonymous) {
+        postObj.ipAddress = post.ipAddress;
       }
-    } else if (
-      !req.user ||
-      post.author.toString() !== req.user._id.toString()
-    ) {
-      return res.status(403).json({ message: "수정 권한이 없습니다." });
+
+      // 익명 댓글의 IP 주소 포함
+      if (postObj.comments) {
+        postObj.comments = postObj.comments.map((comment) => ({
+          ...comment,
+          ipAddress: comment.isAnonymous ? comment.ipAddress : null,
+        }));
+      }
+    } else {
+      // 일반 사용자는 IP 정보 제외
+      delete postObj.ipAddress;
+      if (postObj.comments) {
+        postObj.comments = postObj.comments.map((comment) => {
+          delete comment.ipAddress;
+          return comment;
+        });
+      }
     }
 
-    // 권한 체크 통과 후 수정
-    post.title = title;
-    post.content = content;
-    post.updatedAt = new Date();
-    await post.save();
-
-    res.json({ message: "게시글이 수정되었습니다." });
+    res.json(postObj);
   } catch (error) {
-    console.error("게시글 수정 중 오류:", error);
-    res.status(500).json({ message: "서버 오류", error: error.message });
-  }
-});
-
-// 게시글 비밀번호 확인 API
-app.post("/api/posts/:id/verify-password", async (req, res) => {
-  try {
-    const { password } = req.body;
-    const post = await Post.findById(req.params.id);
-
-    if (!post) {
-      return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
-    }
-
-    if (!post.isAnonymous) {
-      return res.status(400).json({ message: "익명 게시글이 아닙니다." });
-    }
-
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      post.anonymousPassword
-    );
-    if (!isPasswordValid) {
-      return res.status(403).json({ message: "비밀번호가 일치하지 않습니다." });
-    }
-
-    res.json({ message: "비밀번호가 확인되었습니다." });
-  } catch (error) {
-    console.error("비밀번호 확인 중 오류:", error);
+    console.error("게시글 조회 중 오류:", error);
     res.status(500).json({ message: "서버 오류" });
   }
 });
@@ -1917,3 +1896,30 @@ app.post("/api/posts/:id/vote", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
+
+// 관리자용 게시글 일괄 삭제 API
+app.post(
+  "/api/admin/posts/bulk-delete",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const { postIds } = req.body;
+
+      if (!Array.isArray(postIds) || postIds.length === 0) {
+        return res.status(400).json({ message: "선택된 게시글이 없습니다." });
+      }
+
+      // 게시글 삭제
+      await Post.deleteMany({ _id: { $in: postIds } });
+
+      // 관련된 댓글도 삭제
+      await Comment.deleteMany({ post: { $in: postIds } });
+
+      res.json({ message: "선택한 게시글들이 삭제되었습니다." });
+    } catch (error) {
+      console.error("게시글 일괄 삭제 중 오류:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
