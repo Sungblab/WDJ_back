@@ -1238,8 +1238,8 @@ app.get(
   }
 );
 
-// 게시글 상세 조회 API 수정
-app.get("/api/posts/:id", authenticateToken, async (req, res) => {
+// 게시글 상세 조회 API
+app.get("/api/posts/:id", async (req, res) => {
   try {
     const post = await Post.findById(req.params.id)
       .populate("author", "username")
@@ -1252,8 +1252,25 @@ app.get("/api/posts/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
     }
 
+    // 조회수 증가
+    post.views += 1;
+    await post.save();
+
     // 관리자인 경우 모든 IP 정보 포함
-    const isAdmin = req.user && req.user.isAdmin;
+    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+    let isAdmin = false;
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await User.findById(decoded.id);
+        isAdmin = user && user.isAdmin;
+      } catch (error) {
+        // 토큰 검증 실패 시 관리자가 아님
+        console.error("Token verification failed:", error);
+      }
+    }
+
     const postObj = post.toObject();
 
     if (isAdmin) {
@@ -1729,8 +1746,7 @@ app.post("/api/posts/:id/comments", async (req, res) => {
       }
       commentData.anonymousNick = anonymousNick || "ㅇㅇ";
       commentData.anonymousPassword = await bcrypt.hash(anonymousPassword, 10);
-      commentData.ipAddress = req.ip;
-      commentData.ipAddress = getClientIP(req); // 수정된 부분
+      commentData.ipAddress = getClientIP(req);
     } else {
       // 로그인한 사용자의 경우
       const token =
@@ -1840,7 +1856,7 @@ app.post("/api/posts/:id/vote", async (req, res) => {
   try {
     const postId = req.params.id;
     const { type } = req.body; // 'up' 또는 'down'
-    const clientIP = req.ip;
+    const clientIP = getClientIP(req);
 
     const post = await Post.findById(postId);
     if (!post) {
