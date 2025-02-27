@@ -1238,7 +1238,7 @@ app.get(
   }
 );
 
-// 게시글 상세 조회 API
+// 게시글 상세 조회 API 수정
 app.get("/api/posts/:id", async (req, res) => {
   try {
     const post = await Post.findById(req.params.id)
@@ -1274,12 +1274,12 @@ app.get("/api/posts/:id", async (req, res) => {
     const postObj = post.toObject();
 
     if (isAdmin) {
-      // 익명 게시글의 IP 주소 포함
+      // 익명 게시글의 IP 주소 포함 (관리자에게는 전체 IP 표시)
       if (postObj.isAnonymous) {
         postObj.ipAddress = post.ipAddress;
       }
 
-      // 익명 댓글의 IP 주소 포함
+      // 익명 댓글의 IP 주소 포함 (관리자에게는 전체 IP 표시)
       if (postObj.comments) {
         postObj.comments = postObj.comments.map((comment) => ({
           ...comment,
@@ -1287,13 +1287,17 @@ app.get("/api/posts/:id", async (req, res) => {
         }));
       }
     } else {
-      // 일반 사용자는 IP 정보 제외
-      delete postObj.ipAddress;
+      // 일반 사용자에게는 마스킹된 IP 제공
+      if (postObj.isAnonymous) {
+        postObj.ipAddress = maskIP(post.ipAddress);
+      }
+
+      // 익명 댓글의 마스킹된 IP 제공
       if (postObj.comments) {
-        postObj.comments = postObj.comments.map((comment) => {
-          delete comment.ipAddress;
-          return comment;
-        });
+        postObj.comments = postObj.comments.map((comment) => ({
+          ...comment,
+          ipAddress: comment.isAnonymous ? maskIP(comment.ipAddress) : null,
+        }));
       }
     }
 
