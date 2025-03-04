@@ -37,7 +37,7 @@ app.use(
       ? process.env.CORS_ORIGIN.split(",")
       : ["https://wdj.kr", "http://127.0.0.1:5500"],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Content-Range", "X-Content-Range"],
   })
@@ -327,6 +327,33 @@ app.delete(
 
 // 관리자 권한 토글 API
 app.patch(
+  "/api/users/:userId/admin",
+  authenticateToken,
+  isAdmin,
+  async (req, res) => {
+    try {
+      const userId = req.params.userId;
+      const { isAdmin } = req.body;
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
+      }
+      user.isAdmin = isAdmin;
+      await user.save();
+      res.json({
+        message: `사용자의 관리자 권한이 ${
+          isAdmin ? "부여" : "해제"
+        }되었습니다.`,
+      });
+    } catch (error) {
+      console.error("관리자 권한 변경 중 오류 발생:", error);
+      res.status(500).json({ message: "서버 오류" });
+    }
+  }
+);
+
+// PUT 메서드로도 동일한 API 제공
+app.put(
   "/api/users/:userId/admin",
   authenticateToken,
   isAdmin,
