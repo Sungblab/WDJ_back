@@ -1974,249 +1974,155 @@ app.post(
 // 시간표 조회 API
 app.get("/api/timetable", async (req, res) => {
   try {
-    console.log("===== 시간표 API 요청 =====");
-    console.log("요청 쿼리 파라미터:", req.query);
-
+    console.log("\n===== 시간표 API 요청 시작 =====");
+    console.log("요청 쿼리:", req.query);
+    
     const { grade, classNum, date } = req.query;
-
-    // 필수 파라미터 확인
+    
     if (!grade || !classNum || !date) {
       console.log("필수 파라미터 누락:", { grade, classNum, date });
-      return res.status(400).json({
-        success: false,
-        message: "필수 파라미터가 누락되었습니다. (grade, classNum, date)",
+      return res.status(400).json({ 
+        success: false, 
+        message: "학년, 반, 날짜 정보가 필요합니다." 
       });
     }
-
-    // 날짜 정보 추출
-    const year = "2025"; // 고정된 연도 사용
-    const month = date.substring(4, 6);
-    const day = date.substring(6, 8);
-    
-    // 학기 결정 (3월~8월: 1학기, 9월~2월: 2학기)
-    const monthNum = parseInt(month, 10);
-    const semester = monthNum >= 3 && monthNum <= 8 ? "1" : "2";
-    
-    // 요일 계산 (0: 일요일, 1: 월요일, ..., 6: 토요일)
-    const dateObj = new Date(`${year}-${month}-${day}`);
-    const dayOfWeek = dateObj.getDay();
     
     console.log("날짜 정보:", {
-      year,
-      month,
-      day,
-      semester,
-      dayOfWeek,
-      요일: ["일", "월", "화", "수", "목", "금", "토"][dayOfWeek],
+      원본날짜: date,
+      학년: grade,
+      반: classNum
     });
-
-    // 주말인 경우 빈 시간표 반환
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      console.log("주말이므로 빈 시간표 반환");
-      return res.json({
-        success: true,
-        data: {
-          timetable: [],
-          message: "주말은 수업이 없습니다.",
+    
+    // PHP 코드 참고: 간단한 API 호출 방식 적용
+    const apiEndpoint = "hisTimetable";
+    
+    // API 요청 파라미터 로깅 (PHP 코드 참고)
+    const apiParams = {
+      KEY: NEIS_API_KEY ? NEIS_API_KEY.substring(0, 5) + "..." : "API 키 없음",
+      Type: "json",
+      ATPT_OFCDC_SC_CODE: OFFICE_CODE,  // 시도교육청코드 (필수)
+      SD_SCHUL_CODE: SCHOOL_CODE,       // 행정표준코드 (필수)
+      ALL_TI_YMD: date,                 // 시간표일자 (필수)
+      GRADE: grade,                     // 학년 (필수)
+      CLASS_NM: classNum,               // 학급명 (필수)
+    };
+    
+    console.log("NEIS API 요청 파라미터:", apiParams);
+    console.log("NEIS API 요청 URL:", `https://open.neis.go.kr/hub/${apiEndpoint}`);
+    
+    const response = await axios.get(
+      `https://open.neis.go.kr/hub/${apiEndpoint}`,
+      {
+        params: {
+          KEY: NEIS_API_KEY,
+          Type: "json",
+          ATPT_OFCDC_SC_CODE: OFFICE_CODE,
+          SD_SCHUL_CODE: SCHOOL_CODE,
+          ALL_TI_YMD: date,
+          GRADE: grade,
+          CLASS_NM: classNum,
         },
+      }
+    );
+    
+    console.log("NEIS API 응답 상태:", response.status);
+    
+    // 응답 데이터 구조 확인
+    console.log("NEIS API 응답 데이터 구조:");
+    if (response.data.RESULT) {
+      console.log("RESULT 객체 존재:", response.data.RESULT);
+    }
+    
+    if (response.data[apiEndpoint]) {
+      console.log(`${apiEndpoint} 객체 존재:`, {
+        헤더: response.data[apiEndpoint][0],
+        데이터개수: response.data[apiEndpoint][1]?.row?.length || 0
+      });
+    } else {
+      console.log(`${apiEndpoint} 객체 없음`);
+    }
+    
+    // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
+    if (response.data.RESULT?.CODE === "INFO-200") {
+      console.log("데이터 없음 응답 (INFO-200)");
+      // 데이터가 없는 경우 빈 배열 반환
+      return res.json({ 
+        success: true, 
+        data: { 
+          timetable: [] 
+        } 
       });
     }
-
-    // 학년별, 요일별 샘플 시간표 데이터
-    const subjectsByGradeAndDay = {
-      "1": {
-        // 1학년 시간표
-        "1": [ // 월요일
-          { period: "1", subject: "국어" },
-          { period: "2", subject: "수학" },
-          { period: "3", subject: "영어" },
-          { period: "4", subject: "과학" },
-          { period: "5", subject: "사회" },
-          { period: "6", subject: "체육" },
-          { period: "7", subject: "진로" },
-        ],
-        "2": [ // 화요일
-          { period: "1", subject: "수학" },
-          { period: "2", subject: "국어" },
-          { period: "3", subject: "사회" },
-          { period: "4", subject: "영어" },
-          { period: "5", subject: "음악" },
-          { period: "6", subject: "과학" },
-          { period: "7", subject: "동아리" },
-        ],
-        "3": [ // 수요일
-          { period: "1", subject: "영어" },
-          { period: "2", subject: "과학" },
-          { period: "3", subject: "국어" },
-          { period: "4", subject: "수학" },
-          { period: "5", subject: "미술" },
-          { period: "6", subject: "사회" },
-        ],
-        "4": [ // 목요일
-          { period: "1", subject: "과학" },
-          { period: "2", subject: "영어" },
-          { period: "3", subject: "수학" },
-          { period: "4", subject: "국어" },
-          { period: "5", subject: "체육" },
-          { period: "6", subject: "기술가정" },
-          { period: "7", subject: "자율" },
-        ],
-        "5": [ // 금요일
-          { period: "1", subject: "사회" },
-          { period: "2", subject: "국어" },
-          { period: "3", subject: "영어" },
-          { period: "4", subject: "수학" },
-          { period: "5", subject: "정보" },
-          { period: "6", subject: "한문" },
-          { period: "7", subject: "창체" },
-        ],
-      },
-      "2": {
-        // 2학년 시간표
-        "1": [ // 월요일
-          { period: "1", subject: "수학" },
-          { period: "2", subject: "국어" },
-          { period: "3", subject: "영어" },
-          { period: "4", subject: "물리" },
-          { period: "5", subject: "역사" },
-          { period: "6", subject: "체육" },
-          { period: "7", subject: "진로" },
-        ],
-        "2": [ // 화요일
-          { period: "1", subject: "국어" },
-          { period: "2", subject: "수학" },
-          { period: "3", subject: "역사" },
-          { period: "4", subject: "영어" },
-          { period: "5", subject: "음악" },
-          { period: "6", subject: "화학" },
-          { period: "7", subject: "동아리" },
-        ],
-        "3": [ // 수요일
-          { period: "1", subject: "영어" },
-          { period: "2", subject: "생물" },
-          { period: "3", subject: "국어" },
-          { period: "4", subject: "수학" },
-          { period: "5", subject: "미술" },
-          { period: "6", subject: "지리" },
-        ],
-        "4": [ // 목요일
-          { period: "1", subject: "지구과학" },
-          { period: "2", subject: "영어" },
-          { period: "3", subject: "수학" },
-          { period: "4", subject: "국어" },
-          { period: "5", subject: "체육" },
-          { period: "6", subject: "기술가정" },
-          { period: "7", subject: "자율" },
-        ],
-        "5": [ // 금요일
-          { period: "1", subject: "윤리" },
-          { period: "2", subject: "국어" },
-          { period: "3", subject: "영어" },
-          { period: "4", subject: "수학" },
-          { period: "5", subject: "정보" },
-          { period: "6", subject: "제2외국어" },
-          { period: "7", subject: "창체" },
-        ],
-      },
-      "3": {
-        // 3학년 시간표
-        "1": [ // 월요일
-          { period: "1", subject: "수학" },
-          { period: "2", subject: "국어" },
-          { period: "3", subject: "영어" },
-          { period: "4", subject: "물리학Ⅱ" },
-          { period: "5", subject: "한국사" },
-          { period: "6", subject: "체육" },
-          { period: "7", subject: "진로" },
-        ],
-        "2": [ // 화요일
-          { period: "1", subject: "국어" },
-          { period: "2", subject: "수학" },
-          { period: "3", subject: "세계사" },
-          { period: "4", subject: "영어" },
-          { period: "5", subject: "음악" },
-          { period: "6", subject: "화학Ⅱ" },
-          { period: "7", subject: "동아리" },
-        ],
-        "3": [ // 수요일
-          { period: "1", subject: "영어" },
-          { period: "2", subject: "생명과학Ⅱ" },
-          { period: "3", subject: "국어" },
-          { period: "4", subject: "수학" },
-          { period: "5", subject: "미술" },
-          { period: "6", subject: "경제" },
-        ],
-        "4": [ // 목요일
-          { period: "1", subject: "지구과학Ⅱ" },
-          { period: "2", subject: "영어" },
-          { period: "3", subject: "수학" },
-          { period: "4", subject: "국어" },
-          { period: "5", subject: "체육" },
-          { period: "6", subject: "사회문화" },
-          { period: "7", subject: "자율" },
-        ],
-        "5": [ // 금요일
-          { period: "1", subject: "윤리와사상" },
-          { period: "2", subject: "국어" },
-          { period: "3", subject: "영어" },
-          { period: "4", subject: "수학" },
-          { period: "5", subject: "정보" },
-          { period: "6", subject: "제2외국어" },
-          { period: "7", subject: "창체" },
-        ],
-      },
-    };
-
-    // 학년과 요일에 맞는 시간표 가져오기
-    const timetable = subjectsByGradeAndDay[grade]?.[dayOfWeek] || [];
     
-    // 반별로 약간의 차이 주기 (1반은 그대로, 2반부터는 일부 과목 변경)
-    let classTimetable = [...timetable];
+    // 시간표 데이터 추출 (PHP 코드 참고: 단순히 교시와 과목명만 추출)
+    const timetableData = response.data[apiEndpoint] 
+      ? response.data[apiEndpoint][1].row 
+      : [];
     
-    if (classNum !== "1" && classTimetable.length > 0) {
-      const classNumInt = parseInt(classNum, 10);
-      
-      // 반마다 다른 과목으로 변경 (2교시와 5교시)
-      if (classTimetable.length >= 2) {
-        const alternativeSubjects = ["음악", "미술", "체육", "정보", "한문", "진로"];
-        const subjectIndex = (classNumInt - 2) % alternativeSubjects.length;
-        
-        if (classTimetable[1]) {
-          classTimetable[1] = { 
-            ...classTimetable[1], 
-            subject: alternativeSubjects[subjectIndex] 
-          };
-        }
-      }
-      
-      if (classTimetable.length >= 5) {
-        const alternativeSubjects = ["기술가정", "정보", "진로", "음악", "미술", "체육"];
-        const subjectIndex = (classNumInt - 2) % alternativeSubjects.length;
-        
-        if (classTimetable[4]) {
-          classTimetable[4] = { 
-            ...classTimetable[4], 
-            subject: alternativeSubjects[subjectIndex] 
-          };
-        }
-      }
+    console.log(`시간표 데이터 개수: ${timetableData.length}`);
+    if (timetableData.length > 0) {
+      console.log("첫 번째 시간표 항목:", JSON.stringify(timetableData[0], null, 2));
     }
-
-    console.log(`${grade}학년 ${classNum}반 ${["일", "월", "화", "수", "목", "금", "토"][dayOfWeek]}요일 시간표 생성 완료:`, classTimetable);
-
-    // 응답 반환
-    return res.json({
-      success: true,
-      data: {
-        timetable: classTimetable,
-      },
+    
+    // PHP 코드 참고: 단순히 교시별로 과목명만 추출
+    const simpleTimetable = [];
+    
+    timetableData.forEach(item => {
+      const period = parseInt(item.PERIO);
+      simpleTimetable[period] = item.ITRT_CNTNT;
     });
+    
+    // 교시 순서대로 정렬된 배열로 변환
+    const formattedTimetable = Object.keys(simpleTimetable)
+      .sort((a, b) => parseInt(a) - parseInt(b))
+      .map(period => ({
+        period: period,
+        subject: simpleTimetable[period]
+      }));
+    
+    console.log("정리된 시간표:", formattedTimetable);
+    
+    const responseData = { 
+      success: true, 
+      data: { 
+        date: date,
+        grade: grade,
+        classNum: classNum,
+        timetable: formattedTimetable 
+      } 
+    };
+    
+    console.log("클라이언트 응답 데이터:", JSON.stringify(responseData, null, 2));
+    console.log("===== 시간표 API 요청 완료 =====\n");
+    
+    res.json(responseData);
+    
   } catch (error) {
-    console.error("시간표 API 오류:", error);
-    return res.status(500).json({
-      success: false,
-      message: "서버 오류가 발생했습니다.",
-      error: error.message,
+    console.error("\n===== 시간표 API 오류 =====");
+    console.error("오류 유형:", error.name);
+    console.error("오류 메시지:", error.message);
+    
+    // 오류 메시지 상세 정보 추출
+    let errorMessage = "시간표 조회 중 오류가 발생했습니다.";
+    if (error.response) {
+      // API 응답에 오류가 있는 경우
+      console.error("API 응답 오류:", error.response.status);
+      console.error("API 응답 데이터:", error.response.data);
+      errorMessage = `API 응답 오류: ${error.response.status} - ${JSON.stringify(error.response.data)}`;
+    } else if (error.request) {
+      // 요청은 보냈지만 응답이 없는 경우
+      console.error("API 요청 오류:", error.request);
+      errorMessage = "API 서버로부터 응답이 없습니다.";
+    } else {
+      console.error("기타 오류:", error.message);
+    }
+    
+    console.error("===== 시간표 API 오류 종료 =====\n");
+    
+    res.status(500).json({ 
+      success: false, 
+      message: errorMessage,
+      error: error.message
     });
   }
 });
