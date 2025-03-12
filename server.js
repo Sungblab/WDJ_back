@@ -1974,105 +1974,111 @@ app.post(
 // 시간표 조회 API
 app.get("/api/timetable", async (req, res) => {
   try {
+    console.log("\n===== 시간표 API 요청 시작 =====");
+    console.log("요청 쿼리:", req.query);
+    
     const { grade, classNum, date } = req.query;
     
     if (!grade || !classNum || !date) {
+      console.log("필수 파라미터 누락:", { grade, classNum, date });
       return res.status(400).json({ 
         success: false, 
         message: "학년, 반, 날짜 정보가 필요합니다." 
       });
     }
     
-    // 날짜에서 연도, 학기 정보 추출
-    const year = date.substring(0, 4);
+    // 날짜에서 월, 일 정보 추출 (연도는 2025년으로 고정)
+    const fixedYear = "2025";
     const month = parseInt(date.substring(4, 6));
-    
-    // 항상 현재 연도 사용
-    const currentYear = new Date().getFullYear();
+    const day = parseInt(date.substring(6, 8));
     
     // 학기 결정 (3~7월: 1학기, 8~2월: 2학기)
-    const semester = (month >= 3 && month <= 7) ? 1 : 2;
+    const semester = (month >= 3 && month <= 7) ? "1" : "2";
     
     // 요일 결정 (1: 월요일, 2: 화요일, ... 7: 일요일)
     const dateObj = new Date(
-      date.substring(0, 4),
-      parseInt(date.substring(4, 6)) - 1,
-      parseInt(date.substring(6, 8))
+      parseInt(date.substring(0, 4)),
+      month - 1,
+      day
     );
     const dayOfWeek = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
     
-    console.log(`시간표 요청: ${year}년 ${semester}학기 ${grade}학년 ${classNum}반 요일: ${dayOfWeek}`);
+    console.log("날짜 정보:", {
+      원본날짜: date,
+      고정연도: fixedYear,
+      월: month,
+      일: day,
+      학기: semester,
+      요일: dayOfWeek,
+      요일명: ["일", "월", "화", "수", "목", "금", "토"][dateObj.getDay()]
+    });
     
-    const apiEndpoint = "hisTimetable";
+    // 샘플 데이터 생성 (API 호출 대신 샘플 데이터 사용)
+    console.log("샘플 데이터 사용");
     
-    const response = await axios.get(
-      `https://open.neis.go.kr/hub/${apiEndpoint}`,
-      {
-        params: {
-          KEY: NEIS_API_KEY,
-          Type: "json",
-          ATPT_OFCDC_SC_CODE: OFFICE_CODE,
-          SD_SCHUL_CODE: SCHOOL_CODE,
-          AY: currentYear.toString(),     // 항상 현재 연도 사용
-          GRADE: grade,             // 학년
-          CLASS_NM: classNum,       // 반
-          SEM: semester,            // 학기
-          ALL_TI_YMD: date,         // 날짜
-          TI_FROM_YMD: date,        // 시작 날짜
-          TI_TO_YMD: date,          // 종료 날짜
-        },
-      }
-    );
+    // 요일에 따른 샘플 시간표 생성
+    const sampleSubjects = {
+      1: ["국어", "수학", "영어", "과학", "사회", "체육", "음악"],  // 월요일
+      2: ["수학", "국어", "영어", "사회", "과학", "미술", "체육"],  // 화요일
+      3: ["영어", "수학", "국어", "과학", "체육", "사회", "진로"],  // 수요일
+      4: ["과학", "영어", "수학", "국어", "체육", "사회", "동아리"], // 목요일
+      5: ["사회", "국어", "수학", "영어", "과학", "체육", "자율"],  // 금요일
+      6: [],  // 토요일
+      7: []   // 일요일
+    };
     
-    // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
-    if (response.data.RESULT?.CODE === "INFO-200") {
-      // 데이터가 없는 경우 빈 배열 반환
-      return res.json({ 
-        success: true, 
-        data: { 
-          timetable: [] 
-        } 
+    // 해당 요일의 샘플 과목 가져오기
+    const subjects = sampleSubjects[dayOfWeek] || [];
+    
+    // 샘플 시간표 생성
+    const sampleTimetable = [];
+    for (let i = 0; i < subjects.length; i++) {
+      sampleTimetable.push({
+        period: (i + 1).toString(),
+        subject: subjects[i],
+        dayOfWeek: dayOfWeek.toString()
       });
     }
     
-    // 시간표 데이터 추출
-    const timetableData = response.data[apiEndpoint] 
-      ? response.data[apiEndpoint][1].row 
-      : [];
+    console.log("생성된 샘플 시간표:", sampleTimetable);
     
-    // 해당 요일의 시간표만 필터링하고 필요한 정보만 추출
-    const filteredTimetable = timetableData
-      .filter(item => parseInt(item.DOW_CODE) === dayOfWeek)
-      .map(item => ({
-        period: item.PERIO,
-        subject: item.ITRT_CNTNT,
-        dayOfWeek: item.DOW_CODE
-      }))
-      .sort((a, b) => parseInt(a.period) - parseInt(b.period));
-    
-    res.json({ 
+    const responseData = { 
       success: true, 
       data: { 
         date: date,
         grade: grade,
         classNum: classNum,
         dayOfWeek: dayOfWeek,
-        timetable: filteredTimetable 
+        timetable: sampleTimetable 
       } 
-    });
+    };
+    
+    console.log("클라이언트 응답 데이터:", JSON.stringify(responseData, null, 2));
+    console.log("===== 시간표 API 요청 완료 =====\n");
+    
+    res.json(responseData);
     
   } catch (error) {
-    console.error("시간표 조회 중 오류:", error);
+    console.error("\n===== 시간표 API 오류 =====");
+    console.error("오류 유형:", error.name);
+    console.error("오류 메시지:", error.message);
     
     // 오류 메시지 상세 정보 추출
     let errorMessage = "시간표 조회 중 오류가 발생했습니다.";
     if (error.response) {
       // API 응답에 오류가 있는 경우
+      console.error("API 응답 오류:", error.response.status);
+      console.error("API 응답 데이터:", error.response.data);
       errorMessage = `API 응답 오류: ${error.response.status} - ${JSON.stringify(error.response.data)}`;
     } else if (error.request) {
       // 요청은 보냈지만 응답이 없는 경우
+      console.error("API 요청 오류:", error.request);
       errorMessage = "API 서버로부터 응답이 없습니다.";
+    } else {
+      console.error("기타 오류:", error.message);
     }
+    
+    console.error("===== 시간표 API 오류 종료 =====\n");
     
     res.status(500).json({ 
       success: false, 
