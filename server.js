@@ -1898,8 +1898,6 @@ const OFFICE_CODE = "Q10";
 app.get("/api/meals", async (req, res) => {
   try {
     const { date } = req.query;
-    console.log(`[급식 API 요청] 날짜: ${date}`);
-    
     const response = await axios.get(
       "https://open.neis.go.kr/hub/mealServiceDietInfo",
       {
@@ -1912,12 +1910,9 @@ app.get("/api/meals", async (req, res) => {
         },
       }
     );
-    
-    console.log(`[NEIS 급식 API 응답] 상태 코드: ${response.status}`);
 
     // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
     if (response.data.RESULT?.CODE === "INFO-200") {
-      console.log("[급식 API 응답] 데이터 없음 (INFO-200)");
       // 데이터가 없는 경우 빈 배열 반환
       return res.json([]);
     }
@@ -1925,21 +1920,10 @@ app.get("/api/meals", async (req, res) => {
     const meals = response.data.mealServiceDietInfo
       ? response.data.mealServiceDietInfo[1].row
       : [];
-      
-    console.log(`[급식 API 응답] 데이터 개수: ${meals.length}`);
-    if (meals.length > 0) {
-      console.log(`[급식 API 응답] 첫 번째 급식 종류: ${meals[0].MMEAL_SC_NM}`);
-    }
 
     res.json(meals);
   } catch (error) {
-    console.error("[급식 API 오류]", error.message);
-    if (error.response) {
-      console.error("[NEIS 급식 API 오류 응답]", {
-        status: error.response.status,
-        data: error.response.data
-      });
-    }
+    console.error("급식 정보 조회 중 오류:", error);
     // 오류 발생 시에도 빈 배열 반환
     res.json([]);
   }
@@ -1949,16 +1933,12 @@ app.get("/api/meals", async (req, res) => {
 app.get("/api/schedule", async (req, res) => {
   try {
     const { year, month } = req.query;
-    console.log(`[학사일정 API 요청] 년도: ${year}, 월: ${month}`);
-    
     const fromDate = `${year}${String(month).padStart(2, "0")}01`;
     const toDate = `${year}${String(month).padStart(2, "0")}${new Date(
       year,
       month,
       0
     ).getDate()}`;
-    
-    console.log(`[학사일정 API] 조회 기간: ${fromDate} ~ ${toDate}`);
 
     const response = await axios.get(
       "https://open.neis.go.kr/hub/SchoolSchedule",
@@ -1973,12 +1953,9 @@ app.get("/api/schedule", async (req, res) => {
         },
       }
     );
-    
-    console.log(`[NEIS 학사일정 API 응답] 상태 코드: ${response.status}`);
 
     // NEIS API가 이터가 없을 때 RESULT 객체를 반환하는 경우 처리
     if (response.data.RESULT?.CODE === "INFO-200") {
-      console.log("[학사일정 API 응답] 데이터 없음 (INFO-200)");
       // 데이터가 없는 경우 빈 배열 반환
       return res.json([]);
     }
@@ -1986,21 +1963,10 @@ app.get("/api/schedule", async (req, res) => {
     const schedules = response.data.SchoolSchedule
       ? response.data.SchoolSchedule[1].row
       : [];
-      
-    console.log(`[학사일정 API 응답] 데이터 개수: ${schedules.length}`);
-    if (schedules.length > 0) {
-      console.log(`[학사일정 API 응답] 첫 번째 일정: ${JSON.stringify(schedules[0], null, 2)}`);
-    }
 
     res.json(schedules);
   } catch (error) {
-    console.error("[학사일정 API 오류]", error.message);
-    if (error.response) {
-      console.error("[NEIS 학사일정 API 오류 응답]", {
-        status: error.response.status,
-        data: error.response.data
-      });
-    }
+    console.error("학사일정 조회 중 오류:", error);
     // 오류 발생 시 빈 배열 반환
     res.json([]);
   }
@@ -2009,130 +1975,52 @@ app.get("/api/schedule", async (req, res) => {
 // 시간표 조회 API
 app.get("/api/timetable", async (req, res) => {
   try {
-    const { grade, classNum, date, format = 'json' } = req.query;
+    const { date, grade, classNm } = req.query;
     
-    console.log(`[시간표 API 요청] 학년: ${grade}, 반: ${classNum}, 날짜: ${date}, 형식: ${format}`);
+    console.log("시간표 조회 요청:", { date, grade, classNm });
     
-    if (!grade || !classNum || !date) {
-      console.log("[시간표 API 오류] 필수 파라미터 누락");
-      return res.status(400).json({ 
-        success: false, 
-        message: "학년, 반, 날짜 정보가 필요합니다." 
-      });
-    }
-
-    // 요청 URL 구성 (디버깅용)
-    const requestUrl = `https://open.neis.go.kr/hub/hisTimetable?ATPT_OFCDC_SC_CODE=${OFFICE_CODE}&SD_SCHUL_CODE=${SCHOOL_CODE}&ALL_TI_YMD=${date}&GRADE=${grade}&CLASS_NM=${classNum}&Type=${format}`;
-    console.log(`[NEIS API 요청 URL] ${requestUrl}`);
-
-    const response = await axios.get(
-      "https://open.neis.go.kr/hub/hisTimetable",
-      {
-        params: {
-          KEY: NEIS_API_KEY,
-          Type: format,
-          ATPT_OFCDC_SC_CODE: OFFICE_CODE,
-          SD_SCHUL_CODE: SCHOOL_CODE,
-          ALL_TI_YMD: date,
-          GRADE: grade,
-          CLASS_NM: classNum,
-          pSize: 100
-        },
-      }
-    );
-
-    console.log(`[NEIS API 응답] 상태 코드: ${response.status}`);
-    
-    // 빈 시간표 초기화 (1~7교시)
-    const emptyTimetable = Array.from({ length: 7 }, (_, i) => ({
-      period: String(i + 1),
-      subject: ""
-    }));
-    
-    // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
-    if (response.data.RESULT?.CODE === "INFO-200" || 
-        (format === 'xml' && response.data.includes('<RESULT>'))) {
-      console.log("[시간표 API 응답] 데이터 없음 (INFO-200)");
-      // 데이터가 없는 경우 빈 시간표 반환
-      return res.json({ 
-        success: true, 
-        data: { 
-          date: date,
-          grade: grade,
-          class: classNum,
-          timetable: emptyTimetable
-        } 
-      });
-    }
-
-    let timetableData = [];
-    
-    // XML 또는 JSON 응답 처리
-    if (format === 'xml') {
-      // XML 응답 처리 로직 (필요시 구현)
-      console.log("[시간표 API] XML 형식은 현재 지원되지 않습니다. JSON으로 처리합니다.");
-    }
-    
-    // 시간표 데이터 추출 및 가공
-    timetableData = response.data.hisTimetable
-      ? response.data.hisTimetable[1].row
-      : [];
-
-    console.log(`[시간표 API 응답] 데이터 개수: ${timetableData.length}`);
-    
-    // 교시별로 정렬하고 필요한 정보만 추출
-    const formattedTimetable = timetableData
-      .sort((a, b) => parseInt(a.PERIO) - parseInt(b.PERIO))
-      .map(item => ({
-        period: item.PERIO,
-        subject: item.ITRT_CNTNT
-      }));
-      
-    // 빈 시간표에 실제 데이터 채우기
-    const mergedTimetable = [...emptyTimetable];
-    formattedTimetable.forEach(item => {
-      const periodIndex = parseInt(item.period) - 1;
-      if (periodIndex >= 0 && periodIndex < mergedTimetable.length) {
-        mergedTimetable[periodIndex] = item;
-      }
-    });
-
-    const responseData = {
-      success: true,
-      data: {
-        date: date,
-        grade: grade,
-        class: classNum,
-        timetable: mergedTimetable
-      }
+    // 기본 파라미터 설정
+    const params = {
+      KEY: NEIS_API_KEY,
+      Type: "json",
+      pIndex: 1,
+      pSize: 100,
+      ATPT_OFCDC_SC_CODE: OFFICE_CODE,
+      SD_SCHUL_CODE: SCHOOL_CODE,
     };
     
-    console.log(`[시간표 API 응답] 성공: ${JSON.stringify(responseData.data, null, 2)}`);
-    res.json(responseData);
-  } catch (error) {
-    console.error("[시간표 API 오류]", error.message);
-    if (error.response) {
-      console.error("[NEIS API 오류 응답]", {
-        status: error.response.status,
-        data: error.response.data
-      });
+    // 선택적 파라미터 추가
+    if (date) params.ALL_TI_YMD = date;
+    if (grade) params.GRADE = grade;
+    if (classNm) params.CLRM_NM = classNm;
+    
+    console.log("NEIS API 요청 파라미터:", params);
+    
+    const response = await axios.get(
+      "https://open.neis.go.kr/hub/hisTimetable",
+      { params }
+    );
+    
+    console.log("NEIS API 응답 상태:", response.status);
+    
+    // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
+    if (response.data.RESULT?.CODE === "INFO-200") {
+      console.log("시간표 데이터 없음:", response.data.RESULT);
+      // 데이터가 없는 경우 빈 배열 반환
+      return res.json([]);
     }
     
-    // 오류 발생 시에도 빈 시간표 반환
-    const emptyTimetable = Array.from({ length: 7 }, (_, i) => ({
-      period: String(i + 1),
-      subject: ""
-    }));
+    const timetable = response.data.hisTimetable
+      ? response.data.hisTimetable[1].row
+      : [];
     
-    res.json({ 
-      success: true, 
-      data: {
-        date: req.query.date || "",
-        grade: req.query.grade || "",
-        class: req.query.classNum || "",
-        timetable: emptyTimetable,
-        error: "시간표 조회 중 오류가 발생했습니다."
-      }
-    });
+    console.log(`시간표 데이터 ${timetable.length}개 조회 성공`);
+    
+    res.json(timetable);
+  } catch (error) {
+    console.error("시간표 조회 중 오류:", error);
+    console.error("오류 상세 정보:", error.response?.data || error.message);
+    // 오류 발생 시에도 빈 배열 반환
+    res.json([]);
   }
 });
