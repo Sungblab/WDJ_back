@@ -1979,23 +1979,50 @@ app.get("/api/timetable", async (req, res) => {
     
     console.log("시간표 조회 요청:", { date, grade, classNm });
     
-    // 기본 파라미터 설정
+    // 현재 연도 가져오기 (학년도로 사용)
+    const currentYear = new Date().getFullYear();
+    
+    // 기본 파라미터 설정 - JSON 형식으로 요청
     const params = {
       KEY: NEIS_API_KEY,
       Type: "json",
-      pIndex: 1,
-      pSize: 100,
       ATPT_OFCDC_SC_CODE: OFFICE_CODE,
       SD_SCHUL_CODE: SCHOOL_CODE,
+      AY: currentYear, // 학년도 파라미터 추가
     };
     
     // 선택적 파라미터 추가
-    if (date) params.ALL_TI_YMD = date;
     if (grade) params.GRADE = grade;
-    if (classNm) params.CLRM_NM = classNm;
+    if (classNm) params.CLASS_NM = classNm;
+    
+    // 날짜 파라미터 처리
+    if (date) {
+      // 날짜 형식이 YYYYMMDD인지 확인
+      if (date.length === 8) {
+        // 전체 날짜 형식인 경우
+        params.ALL_TI_YMD = date;
+      } else if (date.length === 4) {
+        // 월일(MMDD) 형식인 경우
+        params.ALL_TI_YMD = `${currentYear}${date}`;
+      }
+      
+      console.log("특정 날짜로 시간표 조회:", params.ALL_TI_YMD);
+    } else {
+      console.log("날짜 없이 전체 시간표 조회");
+    }
     
     console.log("NEIS API 요청 파라미터:", params);
     
+    // 직접 URL 생성 (디버깅용)
+    let url = "https://open.neis.go.kr/hub/hisTimetable?";
+    for (const key in params) {
+      url += `${key}=${encodeURIComponent(params[key])}&`;
+    }
+    url = url.slice(0, -1); // 마지막 & 제거
+    
+    console.log("NEIS API 요청 URL:", url);
+    
+    // 고등학교 시간표 API 엔드포인트 사용
     const response = await axios.get(
       "https://open.neis.go.kr/hub/hisTimetable",
       { params }
@@ -2006,21 +2033,125 @@ app.get("/api/timetable", async (req, res) => {
     // NEIS API가 데이터가 없을 때 RESULT 객체를 반환하는 경우 처리
     if (response.data.RESULT?.CODE === "INFO-200") {
       console.log("시간표 데이터 없음:", response.data.RESULT);
+      
+      // 날짜 파라미터가 있었다면 날짜 없이 다시 시도
+      if (date) {
+        console.log("날짜 없이 다시 시도합니다.");
+        delete params.ALL_TI_YMD;
+        
+        try {
+          const retryResponse = await axios.get(
+            "https://open.neis.go.kr/hub/hisTimetable",
+            { params }
+          );
+          
+          if (retryResponse.data.hisTimetable) {
+            const timetable = retryResponse.data.hisTimetable[1].row;
+            console.log(`날짜 없이 시간표 데이터 ${timetable.length}개 조회 성공`);
+            
+            // 요청한 날짜와 가장 가까운 시간표 데이터 필터링
+            const filteredTimetable = timetable.filter(item => {
+              // 날짜가 없으면 모든 데이터 반환
+              if (!date) return true;
+              
+              // 날짜 비교 (같은 요일의 데이터만 반환)
+              const itemDate = new Date(
+                item.ALL_TI_YMD.substring(0, 4),
+                parseInt(item.ALL_TI_YMD.substring(4, 6)) - 1,
+                item.ALL_TI_YMD.substring(6, 8)
+              );
+              
+              const requestDate = new Date(
+                date.substring(0, 4),
+                parseInt(date.substring(4, 6)) - 1,
+                date.substring(6, 8)
+              );
+              
+              return itemDate.getDay() === requestDate.getDay();
+            });
+            
+            if (filteredTimetable.length > 0) {
+              console.log(`필터링된 시간표 데이터 ${filteredTimetable.length}개 반환`);
+              return res.json(filteredTimetable);
+            }
+            
+            return res.json(timetable);
+          }
+        } catch (retryError) {
+          console.error("재시도 중 오류:", retryError.message);
+        }
+      }
+      
       // 데이터가 없는 경우 빈 배열 반환
       return res.json([]);
     }
     
-    const timetable = response.data.hisTimetable
-      ? response.data.hisTimetable[1].row
-      : [];
-    
-    console.log(`시간표 데이터 ${timetable.length}개 조회 성공`);
-    
-    res.json(timetable);
+    // 정상 응답 처리
+    if (response.data.hisTimetable && response.data.hisTimetable.length >= 2) {
+      const timetable = response.data.hisTimetable[1].row;
+      console.log(`시간표 데이터 ${timetable.length}개 조회 성공`);
+      if (timetable.length > 0) {
+        console.log("시간표 데이터 샘플:", timetable[0]);
+      }
+      
+      // 날짜별로 그룹화하여 반환
+      const groupedTimetable = {};
+      timetable.forEach(item => {
+        const date = item.ALL_TI_YMD;
+        if (!groupedTimetable[date]) {
+          groupedTimetable[date] = [];
+        }
+        groupedTimetable[date].push(item);
+      });
+      
+      // 각 날짜별 시간표를 교시 순으로 정렬
+      Object.keys(groupedTimetable).forEach(date => {
+        groupedTimetable[date].sort((a, b) => parseInt(a.PERIO) - parseInt(b.PERIO));
+      });
+      
+      // 그룹화된 시간표 반환
+      res.json({
+        dates: Object.keys(groupedTimetable).sort(),
+        timetable: groupedTimetable
+      });
+    } else {
+      console.log("시간표 데이터 형식 오류:", Object.keys(response.data));
+      res.json({ dates: [], timetable: {} });
+    }
   } catch (error) {
     console.error("시간표 조회 중 오류:", error);
     console.error("오류 상세 정보:", error.response?.data || error.message);
     // 오류 발생 시에도 빈 배열 반환
-    res.json([]);
+    res.json({ dates: [], timetable: {} });
   }
 });
+
+// XML row 태그 파싱 함수
+function parseRowXml(rowXml) {
+  const result = {};
+  
+  // 필요한 필드 추출
+  const fields = [
+    "GRADE", "CLRM_NM", "CLASS_NM", "PERIO", "ITRT_CNTNT", 
+    "ALL_TI_YMD", "LOAD_DTM", "SEM", "SCHUL_NM", "AY"
+  ];
+  
+  fields.forEach(field => {
+    // CDATA 섹션을 포함한 태그 검색
+    const pattern = new RegExp(`<${field}>[\\s\\n]*<!\\[CDATA\\[([^\\]]*)\\]\\]>[\\s\\n]*</${field}>`, 'i');
+    const match = rowXml.match(pattern);
+    
+    if (match && match[1]) {
+      result[field] = match[1].trim();
+    } else {
+      // CDATA 없는 경우도 처리
+      const simplePattern = new RegExp(`<${field}>([^<]*)</${field}>`, 'i');
+      const simpleMatch = rowXml.match(simplePattern);
+      if (simpleMatch && simpleMatch[1]) {
+        result[field] = simpleMatch[1].trim();
+      }
+    }
+  });
+  
+  return result;
+}
